@@ -134,6 +134,14 @@
 }
 
 @layer components {
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
   /**
    * Custom container utility that centers content and adds responsive padding.
    *

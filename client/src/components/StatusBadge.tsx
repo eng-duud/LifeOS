@@ -16,5 +16,5 @@ const STATUS_MAP: Record<string, { label: string; className: string }> = {
 
 export default function StatusBadge({ status, className }: { status: string; className?: string }) {
   const def = STATUS_MAP[status] || { label: status, className: 'bg-muted text-muted-foreground' };
-  return <span className={cn('text-[10px] px-2 py-0.5 rounded-full', def.className, className)}>{def.label}</span>;
+  return <span className={cn('text-[10px] px-2 py-0.5 rounded-full', def.className, className)} aria-label={`الحالة: ${def.label}`}>{def.label}</span>;
 }

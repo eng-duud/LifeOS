@@ -5,7 +5,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { useRoute, useLocation } from "wouter";
-import { Target, Zap, Flame, BookOpen, Plus, Circle, ArrowLeft } from "lucide-react";
+import { Target, Zap, Flame, BookOpen, Plus, Circle, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 
 export default function AreaDetail() {
@@ -48,7 +48,7 @@ export default function AreaDetail() {
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="mb-6">
         <Button variant="ghost" size="sm" className="mb-3" onClick={() => setLocation('/life-areas')}>
-          <ArrowLeft className="w-4 h-4 ml-1" />
+          <ArrowRight className="w-4 h-4 ml-1" />
           العودة لمناطق الحياة
         </Button>
         <div className="flex items-center gap-3 mb-2">

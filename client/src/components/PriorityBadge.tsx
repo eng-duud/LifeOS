@@ -10,5 +10,5 @@ const PRIORITY_MAP: Record<string, { label: string; className: string }> = {
 export default function PriorityBadge({ priority, className }: { priority: string; className?: string }) {
   if (priority === 'medium' || !PRIORITY_MAP[priority]) return null;
   const def = PRIORITY_MAP[priority];
-  return <span className={cn('text-[9px] px-1.5 py-0.5 rounded', def.className, className)}>{def.label}</span>;
+  return <span className={cn('text-[9px] px-1.5 py-0.5 rounded', def.className, className)} aria-label={`الأولوية: ${def.label}`}>{def.label}</span>;
 }

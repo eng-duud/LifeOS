@@ -9,7 +9,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { trpc } from "@/lib/trpc";
 import { useRoute, useLocation } from "wouter";
-import { Zap, Plus, ArrowLeft, Calendar, CheckCircle2, Circle, Edit2, Trash2, Clock, ChevronRight } from "lucide-react";
+import { Zap, Plus, ArrowRight, Calendar, CheckCircle2, Circle, Edit2, Trash2, Clock, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -135,7 +135,7 @@ export default function ProjectDetail() {
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <Button variant="ghost" size="sm" className="mb-3" onClick={() => setLocation('/projects')}>
-        <ArrowLeft className="w-4 h-4 ml-1" />
+        <ArrowRight className="w-4 h-4 ml-1" />
         العودة للمشاريع
       </Button>
 

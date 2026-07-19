@@ -16,7 +16,7 @@ export const appRouter = router({
     }),
 
     get: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .query(async ({ input }) => {
         return await db.getTaskById(input.id, OWNER_USER_ID);
       }),
@@ -38,34 +38,34 @@ export const appRouter = router({
     }),
 
     byProject: publicProcedure
-      .input(z.object({ projectId: z.number() }))
+      .input(z.object({ projectId: z.number().positive().int() }))
       .query(async ({ input }) => {
         return await db.getTasksByProject(input.projectId, OWNER_USER_ID);
       }),
 
     byGoal: publicProcedure
-      .input(z.object({ goalId: z.number() }))
+      .input(z.object({ goalId: z.number().positive().int() }))
       .query(async ({ input }) => {
         return await db.getTasksByGoal(input.goalId, OWNER_USER_ID);
       }),
 
     create: publicProcedure
       .input(z.object({
-        title: z.string(),
-        description: z.string().optional(),
+        title: z.string().min(1).max(255),
+        description: z.string().max(2000).optional(),
         priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
         status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).optional(),
-        progress: z.number().optional(),
+        progress: z.number().min(0).max(100).optional(),
         dueDate: z.date().optional(),
-        estimatedHours: z.number().optional(),
-        actualHours: z.number().optional(),
-        goalId: z.number().optional(),
-        projectId: z.number().optional(),
-        habitId: z.number().optional(),
-        areaId: z.number().optional(),
-        planId: z.number().optional(),
-        bookId: z.number().optional(),
-        parentTaskId: z.number().optional(),
+        estimatedHours: z.number().min(0).max(10000).optional(),
+        actualHours: z.number().min(0).max(10000).optional(),
+        goalId: z.number().positive().int().optional(),
+        projectId: z.number().positive().int().optional(),
+        habitId: z.number().positive().int().optional(),
+        areaId: z.number().positive().int().optional(),
+        planId: z.number().positive().int().optional(),
+        bookId: z.number().positive().int().optional(),
+        parentTaskId: z.number().positive().int().optional(),
       }))
       .mutation(async ({ input }) => {
         const { estimatedHours, actualHours, ...rest } = input;
@@ -79,22 +79,22 @@ export const appRouter = router({
 
     update: publicProcedure
       .input(z.object({
-        id: z.number(),
-        title: z.string().optional(),
-        description: z.string().optional(),
+        id: z.number().positive().int(),
+        title: z.string().min(1).max(255).optional(),
+        description: z.string().max(2000).optional(),
         status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).optional(),
         priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
-        progress: z.number().optional(),
+        progress: z.number().min(0).max(100).optional(),
         dueDate: z.date().optional(),
-        estimatedHours: z.number().optional(),
-        actualHours: z.number().optional(),
-        goalId: z.number().optional(),
-        projectId: z.number().optional(),
-        habitId: z.number().optional(),
-        areaId: z.number().optional(),
-        planId: z.number().optional(),
-        bookId: z.number().optional(),
-        parentTaskId: z.number().optional(),
+        estimatedHours: z.number().min(0).max(10000).optional(),
+        actualHours: z.number().min(0).max(10000).optional(),
+        goalId: z.number().positive().int().optional(),
+        projectId: z.number().positive().int().optional(),
+        habitId: z.number().positive().int().optional(),
+        areaId: z.number().positive().int().optional(),
+        planId: z.number().positive().int().optional(),
+        bookId: z.number().positive().int().optional(),
+        parentTaskId: z.number().positive().int().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, estimatedHours, actualHours, ...data } = input;
@@ -106,7 +106,7 @@ export const appRouter = router({
       }),
 
     delete: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .mutation(async ({ input }) => {
         return await db.deleteTask(input.id, OWNER_USER_ID);
       }),
@@ -119,18 +119,18 @@ export const appRouter = router({
     }),
 
     get: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .query(async ({ input }) => {
         return await db.getGoalById(input.id, OWNER_USER_ID);
       }),
 
     create: publicProcedure
       .input(z.object({
-        title: z.string(),
-        description: z.string().optional(),
-        category: z.string().optional(),
+        title: z.string().min(1).max(255),
+        description: z.string().max(2000).optional(),
+        category: z.string().max(100).optional(),
         targetDate: z.date().optional(),
-        areaId: z.number().optional(),
+        areaId: z.number().positive().int().optional(),
       }))
       .mutation(async ({ input }) => {
         return await db.createGoal({
@@ -141,14 +141,14 @@ export const appRouter = router({
 
     update: publicProcedure
       .input(z.object({
-        id: z.number(),
-        title: z.string().optional(),
-        description: z.string().optional(),
-        progress: z.number().optional(),
+        id: z.number().positive().int(),
+        title: z.string().min(1).max(255).optional(),
+        description: z.string().max(2000).optional(),
+        progress: z.number().min(0).max(100).optional(),
         status: z.enum(['active', 'completed', 'on_hold', 'cancelled']).optional(),
-        category: z.string().optional(),
+        category: z.string().max(100).optional(),
         targetDate: z.date().optional(),
-        areaId: z.number().optional(),
+        areaId: z.number().positive().int().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -156,7 +156,7 @@ export const appRouter = router({
       }),
 
     delete: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .mutation(async ({ input }) => {
         return await db.deleteGoal(input.id, OWNER_USER_ID);
       }),
@@ -169,22 +169,22 @@ export const appRouter = router({
     }),
 
     get: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .query(async ({ input }) => {
         return await db.getProjectById(input.id, OWNER_USER_ID);
       }),
 
     create: publicProcedure
       .input(z.object({
-        title: z.string(),
-        description: z.string().optional(),
+        title: z.string().min(1).max(255),
+        description: z.string().max(2000).optional(),
         priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
         status: z.enum(['planning', 'in_progress', 'completed', 'on_hold', 'cancelled']).optional(),
-        progress: z.number().optional(),
+        progress: z.number().min(0).max(100).optional(),
         startDate: z.date().optional(),
         endDate: z.date().optional(),
-        areaId: z.number().optional(),
-        goalId: z.number().optional(),
+        areaId: z.number().positive().int().optional(),
+        goalId: z.number().positive().int().optional(),
       }))
       .mutation(async ({ input }) => {
         return await db.createProject({
@@ -195,16 +195,16 @@ export const appRouter = router({
 
     update: publicProcedure
       .input(z.object({
-        id: z.number(),
-        title: z.string().optional(),
-        description: z.string().optional(),
-        progress: z.number().optional(),
+        id: z.number().positive().int(),
+        title: z.string().min(1).max(255).optional(),
+        description: z.string().max(2000).optional(),
+        progress: z.number().min(0).max(100).optional(),
         status: z.enum(['planning', 'in_progress', 'completed', 'on_hold', 'cancelled']).optional(),
         priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
         startDate: z.date().optional(),
         endDate: z.date().optional(),
-        areaId: z.number().optional(),
-        goalId: z.number().optional(),
+        areaId: z.number().positive().int().optional(),
+        goalId: z.number().positive().int().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -212,7 +212,7 @@ export const appRouter = router({
       }),
 
     delete: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .mutation(async ({ input }) => {
         return await db.deleteProject(input.id, OWNER_USER_ID);
       }),
@@ -225,18 +225,18 @@ export const appRouter = router({
     }),
 
     get: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .query(async ({ input }) => {
         return await db.getHabitById(input.id, OWNER_USER_ID);
       }),
 
     create: publicProcedure
       .input(z.object({
-        title: z.string(),
-        description: z.string().optional(),
+        title: z.string().min(1).max(255),
+        description: z.string().max(2000).optional(),
         frequency: z.enum(['daily', 'weekly', 'monthly']).optional(),
-        category: z.string().optional(),
-        areaId: z.number().optional(),
+        category: z.string().max(100).optional(),
+        areaId: z.number().positive().int().optional(),
       }))
       .mutation(async ({ input }) => {
         return await db.createHabit({
@@ -247,12 +247,12 @@ export const appRouter = router({
 
     update: publicProcedure
       .input(z.object({
-        id: z.number(),
-        title: z.string().optional(),
-        description: z.string().optional(),
+        id: z.number().positive().int(),
+        title: z.string().min(1).max(255).optional(),
+        description: z.string().max(2000).optional(),
         frequency: z.enum(['daily', 'weekly', 'monthly']).optional(),
-        category: z.string().optional(),
-        areaId: z.number().optional(),
+        category: z.string().max(100).optional(),
+        areaId: z.number().positive().int().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -260,20 +260,20 @@ export const appRouter = router({
       }),
 
     delete: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .mutation(async ({ input }) => {
         return await db.deleteHabit(input.id, OWNER_USER_ID);
       }),
 
     complete: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .mutation(async ({ input }) => {
         await db.completeHabit(input.id, OWNER_USER_ID);
         return { success: true };
       }),
 
     completions: publicProcedure
-      .input(z.object({ habitId: z.number() }))
+      .input(z.object({ habitId: z.number().positive().int() }))
       .query(async ({ input }) => {
         return await db.getHabitCompletions(input.habitId, OWNER_USER_ID);
       }),
@@ -286,21 +286,21 @@ export const appRouter = router({
     }),
 
     get: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .query(async ({ input }) => {
         return await db.getBookById(input.id, OWNER_USER_ID);
       }),
 
     create: publicProcedure
       .input(z.object({
-        title: z.string(),
-        author: z.string().optional(),
-        totalPages: z.number().optional(),
-        currentPage: z.number().optional(),
+        title: z.string().min(1).max(255),
+        author: z.string().max(255).optional(),
+        totalPages: z.number().int().positive().optional(),
+        currentPage: z.number().int().min(0).optional(),
         status: z.enum(['to_read', 'reading', 'completed', 'abandoned']).optional(),
-        rating: z.number().optional(),
-        notes: z.string().optional(),
-        areaId: z.number().optional(),
+        rating: z.number().min(0).max(5).optional(),
+        notes: z.string().max(5000).optional(),
+        areaId: z.number().positive().int().optional(),
       }))
       .mutation(async ({ input }) => {
         return await db.createBook({
@@ -311,15 +311,15 @@ export const appRouter = router({
 
     update: publicProcedure
       .input(z.object({
-        id: z.number(),
-        title: z.string().optional(),
-        author: z.string().optional(),
-        totalPages: z.number().optional(),
-        currentPage: z.number().optional(),
+        id: z.number().positive().int(),
+        title: z.string().min(1).max(255).optional(),
+        author: z.string().max(255).optional(),
+        totalPages: z.number().int().positive().optional(),
+        currentPage: z.number().int().min(0).optional(),
         status: z.enum(['to_read', 'reading', 'completed', 'abandoned']).optional(),
-        rating: z.number().optional(),
-        notes: z.string().optional(),
-        areaId: z.number().optional(),
+        rating: z.number().min(0).max(5).optional(),
+        notes: z.string().max(5000).optional(),
+        areaId: z.number().positive().int().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -327,7 +327,7 @@ export const appRouter = router({
       }),
 
     delete: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .mutation(async ({ input }) => {
         return await db.deleteBook(input.id, OWNER_USER_ID);
       }),
@@ -340,19 +340,19 @@ export const appRouter = router({
     }),
 
     get: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .query(async ({ input }) => {
         return await db.getPlanById(input.id, OWNER_USER_ID);
       }),
 
     create: publicProcedure
       .input(z.object({
-        title: z.string(),
-        description: z.string().optional(),
+        title: z.string().min(1).max(255),
+        description: z.string().max(2000).optional(),
         planType: z.enum(['daily', 'weekly', 'monthly']),
         startDate: z.date(),
         endDate: z.date().optional(),
-        areaId: z.number().optional(),
+        areaId: z.number().positive().int().optional(),
       }))
       .mutation(async ({ input }) => {
         return await db.createPlan({
@@ -363,14 +363,14 @@ export const appRouter = router({
 
     update: publicProcedure
       .input(z.object({
-        id: z.number(),
-        title: z.string().optional(),
-        description: z.string().optional(),
+        id: z.number().positive().int(),
+        title: z.string().min(1).max(255).optional(),
+        description: z.string().max(2000).optional(),
         planType: z.enum(['daily', 'weekly', 'monthly']).optional(),
         startDate: z.date().optional(),
         endDate: z.date().optional(),
         status: z.enum(['draft', 'active', 'completed', 'cancelled']).optional(),
-        areaId: z.number().optional(),
+        areaId: z.number().positive().int().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -378,7 +378,7 @@ export const appRouter = router({
       }),
 
     delete: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .mutation(async ({ input }) => {
         return await db.deletePlan(input.id, OWNER_USER_ID);
       }),
@@ -453,7 +453,7 @@ export const appRouter = router({
     }),
 
     area: publicProcedure
-      .input(z.object({ areaId: z.number() }))
+      .input(z.object({ areaId: z.number().positive().int() }))
       .query(async ({ input }) => {
         return await db.getLifeAreaById(input.areaId, OWNER_USER_ID);
       }),
@@ -484,18 +484,18 @@ export const appRouter = router({
     }),
 
     get: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .query(async ({ input }) => {
         return await db.getLifeAreaById(input.id, OWNER_USER_ID);
       }),
 
     create: publicProcedure
       .input(z.object({
-        name: z.string(),
-        icon: z.string().optional(),
-        color: z.string().optional(),
-        description: z.string().optional(),
-        sortOrder: z.number().optional(),
+        name: z.string().min(1).max(100),
+        icon: z.string().max(50).optional(),
+        color: z.string().max(7).optional(),
+        description: z.string().max(2000).optional(),
+        sortOrder: z.number().int().min(0).optional(),
       }))
       .mutation(async ({ input }) => {
         return await db.createLifeArea({ userId: OWNER_USER_ID, ...input });
@@ -503,12 +503,12 @@ export const appRouter = router({
 
     update: publicProcedure
       .input(z.object({
-        id: z.number(),
-        name: z.string().optional(),
-        icon: z.string().optional(),
-        color: z.string().optional(),
-        description: z.string().optional(),
-        sortOrder: z.number().optional(),
+        id: z.number().positive().int(),
+        name: z.string().min(1).max(100).optional(),
+        icon: z.string().max(50).optional(),
+        color: z.string().max(7).optional(),
+        description: z.string().max(2000).optional(),
+        sortOrder: z.number().int().min(0).optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -516,7 +516,7 @@ export const appRouter = router({
       }),
 
     delete: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .mutation(async ({ input }) => {
         return await db.deleteLifeArea(input.id, OWNER_USER_ID);
       }),
@@ -530,8 +530,8 @@ export const appRouter = router({
 
     create: publicProcedure
       .input(z.object({
-        name: z.string(),
-        color: z.string().optional(),
+        name: z.string().min(1).max(100),
+        color: z.string().max(7).optional(),
       }))
       .mutation(async ({ input }) => {
         return await db.createTag({ userId: OWNER_USER_ID, ...input });
@@ -539,9 +539,9 @@ export const appRouter = router({
 
     update: publicProcedure
       .input(z.object({
-        id: z.number(),
-        name: z.string().optional(),
-        color: z.string().optional(),
+        id: z.number().positive().int(),
+        name: z.string().min(1).max(100).optional(),
+        color: z.string().max(7).optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -549,16 +549,16 @@ export const appRouter = router({
       }),
 
     delete: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .mutation(async ({ input }) => {
         return await db.deleteTag(input.id, OWNER_USER_ID);
       }),
 
     addToEntity: publicProcedure
       .input(z.object({
-        tagId: z.number(),
-        entityType: z.string(),
-        entityId: z.number(),
+        tagId: z.number().positive().int(),
+        entityType: z.string().min(1).max(50),
+        entityId: z.number().positive().int(),
       }))
       .mutation(async ({ input }) => {
         return await db.addEntityTag(input);
@@ -566,9 +566,9 @@ export const appRouter = router({
 
     removeFromEntity: publicProcedure
       .input(z.object({
-        tagId: z.number(),
-        entityType: z.string(),
-        entityId: z.number(),
+        tagId: z.number().positive().int(),
+        entityType: z.string().min(1).max(50),
+        entityId: z.number().positive().int(),
       }))
       .mutation(async ({ input }) => {
         return await db.removeEntityTag(input.tagId, input.entityType, input.entityId);
@@ -576,8 +576,8 @@ export const appRouter = router({
 
     getEntityTags: publicProcedure
       .input(z.object({
-        entityType: z.string(),
-        entityId: z.number(),
+        entityType: z.string().min(1).max(50),
+        entityId: z.number().positive().int(),
       }))
       .query(async ({ input }) => {
         return await db.getEntityTags(input.entityType, input.entityId);
@@ -587,16 +587,16 @@ export const appRouter = router({
   // ============ Subtasks Router ============
   subtasks: router({
     list: publicProcedure
-      .input(z.object({ taskId: z.number() }))
+      .input(z.object({ taskId: z.number().positive().int() }))
       .query(async ({ input }) => {
         return await db.getSubtasks(input.taskId);
       }),
 
     create: publicProcedure
       .input(z.object({
-        taskId: z.number(),
-        title: z.string(),
-        sortOrder: z.number().optional(),
+        taskId: z.number().positive().int(),
+        title: z.string().min(1).max(255),
+        sortOrder: z.number().int().min(0).optional(),
       }))
       .mutation(async ({ input }) => {
         return await db.createSubtask(input);
@@ -604,10 +604,10 @@ export const appRouter = router({
 
     update: publicProcedure
       .input(z.object({
-        id: z.number(),
-        title: z.string().optional(),
+        id: z.number().positive().int(),
+        title: z.string().min(1).max(255).optional(),
         isCompleted: z.boolean().optional(),
-        sortOrder: z.number().optional(),
+        sortOrder: z.number().int().min(0).optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -615,7 +615,7 @@ export const appRouter = router({
       }),
 
     delete: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .mutation(async ({ input }) => {
         return await db.deleteSubtask(input.id);
       }),
@@ -624,21 +624,21 @@ export const appRouter = router({
   // ============ Task Dependencies Router ============
   taskDependencies: router({
     list: publicProcedure
-      .input(z.object({ taskId: z.number() }))
+      .input(z.object({ taskId: z.number().positive().int() }))
       .query(async ({ input }) => {
         return await db.getTaskDependencies(input.taskId);
       }),
 
     listDependsOn: publicProcedure
-      .input(z.object({ taskId: z.number() }))
+      .input(z.object({ taskId: z.number().positive().int() }))
       .query(async ({ input }) => {
         return await db.getTaskDependsOn(input.taskId);
       }),
 
     create: publicProcedure
       .input(z.object({
-        taskId: z.number(),
-        dependsOnId: z.number(),
+        taskId: z.number().positive().int(),
+        dependsOnId: z.number().positive().int(),
         type: z.enum(['blocks', 'blocked_by', 'relates_to']).optional(),
       }))
       .mutation(async ({ input }) => {
@@ -646,7 +646,7 @@ export const appRouter = router({
       }),
 
     delete: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().positive().int() }))
       .mutation(async ({ input }) => {
         return await db.deleteTaskDependency(input.id);
       }),
@@ -658,8 +658,8 @@ export const appRouter = router({
       .input(z.object({
         messages: z.array(z.object({
           role: z.enum(['user', 'assistant']),
-          content: z.string(),
-        })),
+          content: z.string().min(1).max(10000),
+        })).min(1).max(100),
       }))
       .mutation(async ({ input }) => {
         const [tasks, goals, habits, projects, lifeAreas] = await Promise.all([

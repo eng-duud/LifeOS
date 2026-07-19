@@ -1,6 +1,7 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { useLocation } from 'wouter';
+import { CircularProgress } from '@/components/ProgressDisplay';
 
 interface EntityCardProps {
   icon: React.ReactNode;
@@ -45,17 +46,7 @@ export default function EntityCard({ icon, title, subtitle, status, progress, ch
           </div>
           {progress !== undefined && (
             <div className="shrink-0">
-              <div className="relative w-10 h-10">
-                <svg className="w-10 h-10 -rotate-90">
-                  <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" strokeWidth="3" className="text-muted" />
-                  <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"
-                    strokeDasharray={100.5}
-                    strokeDashoffset={100.5 - (Math.min(Math.max(progress, 0), 100) / 100) * 100.5}
-                    className="text-primary transition-all duration-500"
-                  />
-                </svg>
-                <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold font-mono">{progress}%</span>
-              </div>
+              <CircularProgress value={progress} size={40} />
             </div>
           )}
         </div>

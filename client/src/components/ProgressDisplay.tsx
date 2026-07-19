@@ -33,6 +33,10 @@ export default function ProgressDisplay({ value, size = 'md', showLabel = true, 
         <div
           className={cn(cfg.bar, 'rounded-full transition-all duration-500', variant(clamped))}
           style={{ width: `${clamped}%` }}
+          role="progressbar"
+          aria-valuenow={clamped}
+          aria-valuemin={0}
+          aria-valuemax={100}
         />
       </div>
     </div>
@@ -47,7 +51,7 @@ export function CircularProgress({ value, size = 48 }: { value: number; size?: n
   const offset = circumference - (clamped / 100) * circumference;
 
   return (
-    <div className="relative inline-flex items-center justify-center">
+    <div className="relative inline-flex items-center justify-center" role="progressbar" aria-valuenow={clamped} aria-valuemin={0} aria-valuemax={100}>
       <svg width={size} height={size} className="-rotate-90">
         <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="currentColor" strokeWidth={strokeWidth} className="text-muted" />
         <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round"

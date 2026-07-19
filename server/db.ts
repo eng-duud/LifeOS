@@ -1,6 +1,9 @@
 import { eq, and, desc, inArray } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-http";
-import { neon } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-serverless";
+import { Pool, neonConfig } from "@neondatabase/serverless";
+import ws from "ws";
+
+neonConfig.webSocketConstructor = ws;
 import {
   tasks,
   goals,
@@ -19,19 +22,26 @@ import {
   taskDependencies,
 } from "../drizzle/schema";
 
-let _db: ReturnType<typeof drizzle> | null = null;
+let _db: any = null;
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      const client = neon(process.env.DATABASE_URL);
-      _db = drizzle({ client });
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      _db = drizzle(pool);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
     }
   }
-  return _db;
+  return _db as any;
+}
+
+// ── Database query helper ──────────────────────────────────────────────────
+async function withDb(fn: (db: any) => any): Promise<any> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return fn(db);
 }
 
 // ============ Activity Log ============
@@ -44,59 +54,59 @@ export async function logActivity(
   oldValue?: string,
   newValue?: string
 ) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  return await db.insert(activityLog).values({
-    userId,
-    entityType,
-    entityId,
-    action,
-    oldValue,
-    newValue,
-  });
+  return await withDb(db =>
+    db.insert(activityLog).values({
+      userId,
+      entityType,
+      entityId,
+      action,
+      oldValue,
+      newValue,
+    })
+  );
 }
 
 export async function getActivityLog(userId: number, limit = 50) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  return await db.select().from(activityLog)
-    .where(eq(activityLog.userId, userId))
-    .orderBy(desc(activityLog.createdAt))
-    .limit(limit);
+  return await withDb(db =>
+    db.select().from(activityLog)
+      .where(eq(activityLog.userId, userId))
+      .orderBy(desc(activityLog.createdAt))
+      .limit(limit)
+  );
 }
 
 // ============ Auto-Progress Cascade ============
 
 async function recalculateProjectProgress(projectId: number, userId: number) {
-  const db = await getDb();
-  if (!db) return;
-
-  const projectTasks = await db.select().from(tasks)
-    .where(and(eq(tasks.projectId, projectId), eq(tasks.userId, userId)));
+  const projectTasks = await withDb(db =>
+    db.select().from(tasks)
+      .where(and(eq(tasks.projectId, projectId), eq(tasks.userId, userId)))
+  );
 
   const completedCount = projectTasks.filter(t => t.status === 'completed').length;
   const progress = projectTasks.length > 0
     ? Math.round((completedCount / projectTasks.length) * 100)
     : 0;
 
-  await db.update(projects).set({ progress }).where(eq(projects.id, projectId));
+  await withDb(db =>
+    db.update(projects).set({ progress }).where(eq(projects.id, projectId))
+  );
 }
 
 async function recalculateGoalProgress(goalId: number, userId: number) {
-  const db = await getDb();
-  if (!db) return;
-
-  const goalTasks = await db.select().from(tasks)
-    .where(and(eq(tasks.goalId, goalId), eq(tasks.userId, userId)));
+  const goalTasks = await withDb(db =>
+    db.select().from(tasks)
+      .where(and(eq(tasks.goalId, goalId), eq(tasks.userId, userId)))
+  );
 
   const completedCount = goalTasks.filter(t => t.status === 'completed').length;
   const progress = goalTasks.length > 0
     ? Math.round((completedCount / goalTasks.length) * 100)
     : 0;
 
-  await db.update(goals).set({ progress }).where(eq(goals.id, goalId));
+  await withDb(db =>
+    db.update(goals).set({ progress }).where(eq(goals.id, goalId))
+  );
 
   const goal = await getGoalById(goalId, userId);
   if (goal?.areaId) {
@@ -105,14 +115,16 @@ async function recalculateGoalProgress(goalId: number, userId: number) {
 }
 
 async function recalculateAreaHealth(areaId: number, userId: number) {
-  const db = await getDb();
-  if (!db) return;
-
-  const areaGoals = await db.select().from(goals)
-    .where(and(eq(goals.areaId, areaId), eq(goals.userId, userId)));
-
-  const areaHabits = await db.select().from(habits)
-    .where(and(eq(habits.areaId, areaId), eq(habits.userId, userId)));
+  const [areaGoals, areaHabits] = await Promise.all([
+    withDb(db =>
+      db.select().from(goals)
+        .where(and(eq(goals.areaId, areaId), eq(goals.userId, userId)))
+    ),
+    withDb(db =>
+      db.select().from(habits)
+        .where(and(eq(habits.areaId, areaId), eq(habits.userId, userId)))
+    ),
+  ]);
 
   const avgGoalProgress = areaGoals.length > 0
     ? Math.round(areaGoals.reduce((sum, g) => sum + (g.progress || 0), 0) / areaGoals.length)
@@ -131,78 +143,96 @@ async function recalculateAreaHealth(areaId: number, userId: number) {
 // ============ Task Operations ============
 
 export async function createTask(task: typeof tasks.$inferInsert) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  return await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const result = await tx.insert(tasks).values(task);
 
-  const result = await db.insert(tasks).values(task);
+      await tx.insert(activityLog).values({
+        userId: task.userId,
+        entityType: 'task',
+        entityId: 0,
+        action: 'created',
+        oldValue: undefined,
+        newValue: task.title,
+      });
 
-  if (task.projectId) {
-    await recalculateProjectProgress(task.projectId, task.userId);
-  }
+      if (task.projectId) {
+        await recalculateProjectProgress(task.projectId, task.userId);
+      }
 
-  await logActivity(task.userId, 'task', 0, 'created', undefined, task.title);
-
-  return result;
+      return result;
+    });
+  });
 }
 
 export async function getTasks(userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  return await db.select().from(tasks).where(eq(tasks.userId, userId));
+  return await withDb(db =>
+    db.select().from(tasks).where(eq(tasks.userId, userId))
+  );
 }
 
 export async function getTaskById(id: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const result = await db.select().from(tasks).where(and(eq(tasks.id, id), eq(tasks.userId, userId)));
+  const result = await withDb(db =>
+    db.select().from(tasks).where(and(eq(tasks.id, id), eq(tasks.userId, userId)))
+  );
   return result[0];
 }
 
 export async function updateTask(id: number, userId: number, data: Partial<typeof tasks.$inferInsert>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
   const oldTask = await getTaskById(id, userId);
 
-  const result = await db.update(tasks).set(data).where(and(eq(tasks.id, id), eq(tasks.userId, userId)));
+  const result = await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const r = await tx.update(tasks).set(data).where(and(eq(tasks.id, id), eq(tasks.userId, userId)));
+
+      if (oldTask) {
+        if (data.status && data.status !== oldTask.status) {
+          const action = data.status === 'completed' ? 'completed' : `status:${oldTask.status}->${data.status}`;
+          await tx.insert(activityLog).values({
+            userId, entityType: 'task', entityId: id, action,
+            oldValue: oldTask.status, newValue: data.status,
+          });
+        }
+        if (data.title && data.title !== oldTask.title) {
+          await tx.insert(activityLog).values({
+            userId, entityType: 'task', entityId: id, action: 'updated',
+            oldValue: oldTask.title, newValue: data.title,
+          });
+        }
+      }
+
+      return r;
+    });
+  });
 
   if (data.projectId || oldTask?.projectId) {
     const projectId = data.projectId || oldTask?.projectId;
     if (projectId) await recalculateProjectProgress(projectId, userId);
   }
 
-  if (oldTask) {
-    if (data.status && data.status !== oldTask.status) {
-      if (data.status === 'completed') {
-        await logActivity(userId, 'task', id, 'completed', oldTask.status, 'completed');
-      } else {
-        await logActivity(userId, 'task', id, `status:${oldTask.status}->${data.status}`, oldTask.status, data.status);
-      }
-    }
-    if (data.title && data.title !== oldTask.title) {
-      await logActivity(userId, 'task', id, 'updated', oldTask.title, data.title);
-    }
-  }
-
   return result;
 }
 
 export async function deleteTask(id: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
   const oldTask = await getTaskById(id, userId);
 
-  const result = await db.delete(tasks).where(and(eq(tasks.id, id), eq(tasks.userId, userId)));
+  const result = await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const r = await tx.delete(tasks).where(and(eq(tasks.id, id), eq(tasks.userId, userId)));
+
+      if (oldTask) {
+        await tx.insert(activityLog).values({
+          userId, entityType: 'task', entityId: id, action: 'deleted',
+          oldValue: oldTask.title, newValue: undefined,
+        });
+      }
+
+      return r;
+    });
+  });
 
   if (oldTask?.projectId) {
     await recalculateProjectProgress(oldTask.projectId, userId);
-  }
-
-  if (oldTask) {
-    await logActivity(userId, 'task', id, 'deleted', oldTask.title, undefined);
   }
 
   return result;
@@ -211,180 +241,216 @@ export async function deleteTask(id: number, userId: number) {
 // ============ Goal Operations ============
 
 export async function createGoal(goal: typeof goals.$inferInsert) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  return await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const result = await tx.insert(goals).values(goal);
 
-  const result = await db.insert(goals).values(goal);
+      await tx.insert(activityLog).values({
+        userId: goal.userId,
+        entityType: 'goal',
+        entityId: 0,
+        action: 'created',
+        oldValue: undefined,
+        newValue: goal.title,
+      });
 
-  await logActivity(goal.userId, 'goal', 0, 'created', undefined, goal.title);
-
-  return result;
+      return result;
+    });
+  });
 }
 
 export async function getGoals(userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  return await db.select().from(goals).where(eq(goals.userId, userId));
+  return await withDb(db =>
+    db.select().from(goals).where(eq(goals.userId, userId))
+  );
 }
 
 export async function getGoalById(id: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const result = await db.select().from(goals).where(and(eq(goals.id, id), eq(goals.userId, userId)));
+  const result = await withDb(db =>
+    db.select().from(goals).where(and(eq(goals.id, id), eq(goals.userId, userId)))
+  );
   return result[0];
 }
 
 export async function updateGoal(id: number, userId: number, data: Partial<typeof goals.$inferInsert>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
   const oldGoal = await getGoalById(id, userId);
 
-  const result = await db.update(goals).set(data).where(and(eq(goals.id, id), eq(goals.userId, userId)));
+  return await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const result = await tx.update(goals).set(data).where(and(eq(goals.id, id), eq(goals.userId, userId)));
 
-  if (data.status === 'completed' && oldGoal && oldGoal.status !== 'completed') {
-    await logActivity(userId, 'goal', id, 'completed', oldGoal.status, 'completed');
-  }
+      if (data.status === 'completed' && oldGoal && oldGoal.status !== 'completed') {
+        await tx.insert(activityLog).values({
+          userId, entityType: 'goal', entityId: id, action: 'completed',
+          oldValue: oldGoal.status, newValue: 'completed',
+        });
+      }
 
-  return result;
+      return result;
+    });
+  });
 }
 
 export async function deleteGoal(id: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
   const oldGoal = await getGoalById(id, userId);
 
-  const result = await db.delete(goals).where(and(eq(goals.id, id), eq(goals.userId, userId)));
+  return await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const result = await tx.delete(goals).where(and(eq(goals.id, id), eq(goals.userId, userId)));
 
-  if (oldGoal) {
-    await logActivity(userId, 'goal', id, 'deleted', oldGoal.title, undefined);
-  }
+      if (oldGoal) {
+        await tx.insert(activityLog).values({
+          userId, entityType: 'goal', entityId: id, action: 'deleted',
+          oldValue: oldGoal.title, newValue: undefined,
+        });
+      }
 
-  return result;
+      return result;
+    });
+  });
 }
 
 // ============ Project Operations ============
 
 export async function createProject(project: typeof projects.$inferInsert) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  return await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const result = await tx.insert(projects).values(project);
 
-  const result = await db.insert(projects).values(project);
+      await tx.insert(activityLog).values({
+        userId: project.userId,
+        entityType: 'project',
+        entityId: 0,
+        action: 'created',
+        oldValue: undefined,
+        newValue: project.title,
+      });
 
-  await logActivity(project.userId, 'project', 0, 'created', undefined, project.title);
-
-  return result;
+      return result;
+    });
+  });
 }
 
 export async function getProjects(userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  return await db.select().from(projects).where(eq(projects.userId, userId));
+  return await withDb(db =>
+    db.select().from(projects).where(eq(projects.userId, userId))
+  );
 }
 
 export async function getProjectById(id: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const result = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, userId)));
+  const result = await withDb(db =>
+    db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, userId)))
+  );
   return result[0];
 }
 
 export async function updateProject(id: number, userId: number, data: Partial<typeof projects.$inferInsert>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
   const oldProject = await getProjectById(id, userId);
 
-  const result = await db.update(projects).set(data).where(and(eq(projects.id, id), eq(projects.userId, userId)));
+  return await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const result = await tx.update(projects).set(data).where(and(eq(projects.id, id), eq(projects.userId, userId)));
 
-  if (data.status === 'completed' && oldProject && oldProject.status !== 'completed') {
-    await logActivity(userId, 'project', id, 'completed', oldProject.status, 'completed');
-  }
+      if (data.status === 'completed' && oldProject && oldProject.status !== 'completed') {
+        await tx.insert(activityLog).values({
+          userId, entityType: 'project', entityId: id, action: 'completed',
+          oldValue: oldProject.status, newValue: 'completed',
+        });
+      }
 
-  return result;
+      return result;
+    });
+  });
 }
 
 export async function deleteProject(id: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
   const oldProject = await getProjectById(id, userId);
 
-  const result = await db.delete(projects).where(and(eq(projects.id, id), eq(projects.userId, userId)));
+  return await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const result = await tx.delete(projects).where(and(eq(projects.id, id), eq(projects.userId, userId)));
 
-  if (oldProject) {
-    await logActivity(userId, 'project', id, 'deleted', oldProject.title, undefined);
-  }
+      if (oldProject) {
+        await tx.insert(activityLog).values({
+          userId, entityType: 'project', entityId: id, action: 'deleted',
+          oldValue: oldProject.title, newValue: undefined,
+        });
+      }
 
-  return result;
+      return result;
+    });
+  });
 }
 
 // ============ Habit Operations ============
 
 export async function createHabit(habit: typeof habits.$inferInsert) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  return await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const result = await tx.insert(habits).values(habit);
 
-  const result = await db.insert(habits).values(habit);
+      await tx.insert(activityLog).values({
+        userId: habit.userId,
+        entityType: 'habit',
+        entityId: 0,
+        action: 'created',
+        oldValue: undefined,
+        newValue: habit.title,
+      });
 
-  await logActivity(habit.userId, 'habit', 0, 'created', undefined, habit.title);
-
-  return result;
+      return result;
+    });
+  });
 }
 
 export async function getHabits(userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  return await db.select().from(habits).where(eq(habits.userId, userId));
+  return await withDb(db =>
+    db.select().from(habits).where(eq(habits.userId, userId))
+  );
 }
 
 export async function getHabitById(id: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const result = await db.select().from(habits).where(and(eq(habits.id, id), eq(habits.userId, userId)));
+  const result = await withDb(db =>
+    db.select().from(habits).where(and(eq(habits.id, id), eq(habits.userId, userId)))
+  );
   return result[0];
 }
 
 export async function updateHabit(id: number, userId: number, data: Partial<typeof habits.$inferInsert>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  return await db.update(habits).set(data).where(and(eq(habits.id, id), eq(habits.userId, userId)));
+  return await withDb(db =>
+    db.update(habits).set(data).where(and(eq(habits.id, id), eq(habits.userId, userId)))
+  );
 }
 
 export async function deleteHabit(id: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
   const oldHabit = await getHabitById(id, userId);
 
-  const result = await db.delete(habits).where(and(eq(habits.id, id), eq(habits.userId, userId)));
+  return await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const result = await tx.delete(habits).where(and(eq(habits.id, id), eq(habits.userId, userId)));
 
-  if (oldHabit) {
-    await logActivity(userId, 'habit', id, 'deleted', oldHabit.title, undefined);
-  }
+      if (oldHabit) {
+        await tx.insert(activityLog).values({
+          userId, entityType: 'habit', entityId: id, action: 'deleted',
+          oldValue: oldHabit.title, newValue: undefined,
+        });
+      }
 
-  return result;
+      return result;
+    });
+  });
 }
 
 // ============ Habit Completion Operations ============
 
 export async function completeHabit(habitId: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  await db.insert(habitCompletions).values({
-    habitId,
-    userId,
-    completedAt: new Date(),
-  });
+  await withDb(db =>
+    db.insert(habitCompletions).values({
+      habitId,
+      userId,
+      completedAt: new Date(),
+    })
+  );
 
   const habit = await getHabitById(habitId, userId);
   if (habit) {
@@ -403,136 +469,150 @@ export async function completeHabit(habitId: number, userId: number) {
 }
 
 export async function getHabitCompletions(habitId: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  return await db.select().from(habitCompletions).where(
-    and(eq(habitCompletions.habitId, habitId), eq(habitCompletions.userId, userId))
+  return await withDb(db =>
+    db.select().from(habitCompletions).where(
+      and(eq(habitCompletions.habitId, habitId), eq(habitCompletions.userId, userId))
+    )
   );
 }
 
 // ============ Book Operations ============
 
 export async function createBook(book: typeof books.$inferInsert) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  return await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const result = await tx.insert(books).values(book);
 
-  const result = await db.insert(books).values(book);
+      await tx.insert(activityLog).values({
+        userId: book.userId,
+        entityType: 'book',
+        entityId: 0,
+        action: 'created',
+        oldValue: undefined,
+        newValue: book.title,
+      });
 
-  await logActivity(book.userId, 'book', 0, 'created', undefined, book.title);
-
-  return result;
+      return result;
+    });
+  });
 }
 
 export async function getBooks(userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  return await db.select().from(books).where(eq(books.userId, userId));
+  return await withDb(db =>
+    db.select().from(books).where(eq(books.userId, userId))
+  );
 }
 
 export async function getBookById(id: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const result = await db.select().from(books).where(and(eq(books.id, id), eq(books.userId, userId)));
+  const result = await withDb(db =>
+    db.select().from(books).where(and(eq(books.id, id), eq(books.userId, userId)))
+  );
   return result[0];
 }
 
 export async function updateBook(id: number, userId: number, data: Partial<typeof books.$inferInsert>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
   const oldBook = await getBookById(id, userId);
   const oldStatus = oldBook?.status;
 
-  const result = await db.update(books).set(data).where(and(eq(books.id, id), eq(books.userId, userId)));
+  return await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const result = await tx.update(books).set(data).where(and(eq(books.id, id), eq(books.userId, userId)));
 
-  if (data.status && oldStatus && data.status !== oldStatus && data.status === 'completed') {
-    await logActivity(userId, 'book', id, 'completed', oldStatus, data.status);
-  }
+      if (data.status && oldStatus && data.status !== oldStatus && data.status === 'completed') {
+        await tx.insert(activityLog).values({
+          userId, entityType: 'book', entityId: id, action: 'completed',
+          oldValue: oldStatus, newValue: data.status,
+        });
+      }
 
-  return result;
+      return result;
+    });
+  });
 }
 
 export async function deleteBook(id: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
   const oldBook = await getBookById(id, userId);
 
-  const result = await db.delete(books).where(and(eq(books.id, id), eq(books.userId, userId)));
+  return await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const result = await tx.delete(books).where(and(eq(books.id, id), eq(books.userId, userId)));
 
-  if (oldBook) {
-    await logActivity(userId, 'book', id, 'deleted', oldBook.title, undefined);
-  }
+      if (oldBook) {
+        await tx.insert(activityLog).values({
+          userId, entityType: 'book', entityId: id, action: 'deleted',
+          oldValue: oldBook.title, newValue: undefined,
+        });
+      }
 
-  return result;
+      return result;
+    });
+  });
 }
 
 // ============ Plan Operations ============
 
 export async function createPlan(plan: typeof plans.$inferInsert) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  return await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const result = await tx.insert(plans).values(plan);
 
-  return await db.insert(plans).values(plan);
+      await tx.insert(activityLog).values({
+        userId: plan.userId,
+        entityType: 'plan',
+        entityId: 0,
+        action: 'created',
+        oldValue: undefined,
+        newValue: plan.title,
+      });
+
+      return result;
+    });
+  });
 }
 
 export async function getPlans(userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  return await db.select().from(plans).where(eq(plans.userId, userId));
+  return await withDb(db =>
+    db.select().from(plans).where(eq(plans.userId, userId))
+  );
 }
 
 export async function getPlanById(id: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const result = await db.select().from(plans).where(and(eq(plans.id, id), eq(plans.userId, userId)));
+  const result = await withDb(db =>
+    db.select().from(plans).where(and(eq(plans.id, id), eq(plans.userId, userId)))
+  );
   return result[0];
 }
 
 export async function updatePlan(id: number, userId: number, data: Partial<typeof plans.$inferInsert>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  return await db.update(plans).set(data).where(and(eq(plans.id, id), eq(plans.userId, userId)));
+  return await withDb(db =>
+    db.update(plans).set(data).where(and(eq(plans.id, id), eq(plans.userId, userId)))
+  );
 }
 
 export async function deletePlan(id: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  return await db.delete(plans).where(and(eq(plans.id, id), eq(plans.userId, userId)));
+  return await withDb(db =>
+    db.delete(plans).where(and(eq(plans.id, id), eq(plans.userId, userId)))
+  );
 }
 
 // ============ Statistics Operations ============
 
 export async function getStatistics(userId: number, date?: Date) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  if (date) {
-    const result = await db.select().from(statistics).where(
-      and(eq(statistics.userId, userId), eq(statistics.date, date))
-    );
-    return result[0];
-  }
-
-  return await db.select().from(statistics).where(eq(statistics.userId, userId));
+  return await withDb(async (db) => {
+    if (date) {
+      const result = await db.select().from(statistics).where(
+        and(eq(statistics.userId, userId), eq(statistics.date, date))
+      );
+      return result[0];
+    }
+    return await db.select().from(statistics).where(eq(statistics.userId, userId));
+  });
 }
 
 export async function updateStatistics(userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const userTasks = await getTasks(userId);
-  const userGoals = await getGoals(userId);
-  const userProjects = await getProjects(userId);
-  const userHabits = await getHabits(userId);
-  const userBooks = await getBooks(userId);
+  const [userTasks, userGoals, userProjects, userHabits, userBooks] = await Promise.all([
+    getTasks(userId), getGoals(userId), getProjects(userId), getHabits(userId), getBooks(userId),
+  ]);
 
   const stats = {
     userId,
@@ -549,27 +629,23 @@ export async function updateStatistics(userId: number) {
     booksReading: userBooks.filter(b => b.status === 'reading').length,
   };
 
-  await db.insert(statistics).values(stats);
+  await withDb(db => db.insert(statistics).values(stats));
   return stats;
 }
 
 // ============ Health Status Operations ============
 
 export async function getHealthStatus(userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const result = await db.select().from(healthStatus).where(eq(healthStatus.userId, userId));
+  const result = await withDb(db =>
+    db.select().from(healthStatus).where(eq(healthStatus.userId, userId))
+  );
   return result[0];
 }
 
 export async function updateHealthStatus(userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const userTasks = await getTasks(userId);
-  const userGoals = await getGoals(userId);
-  const userHabits = await getHabits(userId);
+  const [userTasks, userGoals, userHabits] = await Promise.all([
+    getTasks(userId), getGoals(userId), getHabits(userId),
+  ]);
 
   const taskCompletionRate = userTasks.length > 0
     ? (userTasks.filter(t => t.status === 'completed').length / userTasks.length) * 100
@@ -594,25 +670,27 @@ export async function updateHealthStatus(userId: number) {
 
   const existing = await getHealthStatus(userId);
 
-  if (existing) {
-    await db.update(healthStatus).set({
-      status,
-      taskCompletionRate: taskCompletionRate.toString() as any,
-      goalProgress: goalProgress.toString() as any,
-      habitStreak,
-      overallScore,
-      lastUpdatedAt: new Date(),
-    }).where(eq(healthStatus.userId, userId));
-  } else {
-    await db.insert(healthStatus).values({
-      userId,
-      status,
-      taskCompletionRate: taskCompletionRate.toString() as any,
-      goalProgress: goalProgress.toString() as any,
-      habitStreak,
-      overallScore,
-    } as any);
-  }
+  await withDb(async (db) => {
+    if (existing) {
+      await db.update(healthStatus).set({
+        status,
+        taskCompletionRate: taskCompletionRate.toString() as any,
+        goalProgress: goalProgress.toString() as any,
+        habitStreak,
+        overallScore,
+        lastUpdatedAt: new Date(),
+      }).where(eq(healthStatus.userId, userId));
+    } else {
+      await db.insert(healthStatus).values({
+        userId,
+        status,
+        taskCompletionRate: taskCompletionRate.toString() as any,
+        goalProgress: goalProgress.toString() as any,
+        habitStreak,
+        overallScore,
+      } as any);
+    }
+  });
 
   return { status, taskCompletionRate, goalProgress, habitStreak, overallScore };
 }
@@ -658,10 +736,9 @@ export async function getDashboardStats(userId: number) {
 // ============ Today & Focus Queries ============
 
 export async function getTodayTasks(userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const allTasks = await db.select().from(tasks).where(eq(tasks.userId, userId));
+  const allTasks = await withDb(db =>
+    db.select().from(tasks).where(eq(tasks.userId, userId))
+  );
 
   const todayStr = new Date().toDateString();
 
@@ -673,10 +750,9 @@ export async function getTodayTasks(userId: number) {
 }
 
 export async function getOverdueTasks(userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const allTasks = await db.select().from(tasks).where(eq(tasks.userId, userId));
+  const allTasks = await withDb(db =>
+    db.select().from(tasks).where(eq(tasks.userId, userId))
+  );
   const now = new Date();
 
   return allTasks.filter(t => {
@@ -695,17 +771,16 @@ export async function getInboxTasks(userId: number) {
 }
 
 export async function getBlockedTasks(userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
   const allTasks = await getTasks(userId);
   const activeTasks = allTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled');
   const activeTaskIds = activeTasks.map(t => t.id);
 
   if (activeTaskIds.length === 0) return [];
 
-  const deps = await db.select().from(taskDependencies)
-    .where(inArray(taskDependencies.taskId, activeTaskIds));
+  const deps = await withDb(db =>
+    db.select().from(taskDependencies)
+      .where(inArray(taskDependencies.taskId, activeTaskIds))
+  );
 
   const blocked: any[] = [];
 
@@ -723,19 +798,17 @@ export async function getBlockedTasks(userId: number) {
 }
 
 export async function getTasksByProject(projectId: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  return await db.select().from(tasks)
-    .where(and(eq(tasks.projectId, projectId), eq(tasks.userId, userId)));
+  return await withDb(db =>
+    db.select().from(tasks)
+      .where(and(eq(tasks.projectId, projectId), eq(tasks.userId, userId)))
+  );
 }
 
 export async function getTasksByGoal(goalId: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const goalTasks = await db.select().from(tasks)
-    .where(and(eq(tasks.goalId, goalId), eq(tasks.userId, userId)));
+  const goalTasks = await withDb(db =>
+    db.select().from(tasks)
+      .where(and(eq(tasks.goalId, goalId), eq(tasks.userId, userId)))
+  );
 
   return { tasks: goalTasks };
 }
@@ -760,153 +833,171 @@ export async function getHierarchy(userId: number) {
 // ============ Life Area Operations ============
 
 export async function createLifeArea(area: typeof lifeAreas.$inferInsert) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const result = await db.insert(lifeAreas).values(area);
-  await logActivity(area.userId, 'lifeArea', 0, 'created', undefined, area.name);
-  return result;
+  return await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const result = await tx.insert(lifeAreas).values(area);
+
+      await tx.insert(activityLog).values({
+        userId: area.userId,
+        entityType: 'lifeArea',
+        entityId: 0,
+        action: 'created',
+        oldValue: undefined,
+        newValue: area.name,
+      });
+
+      return result;
+    });
+  });
 }
 
 export async function getLifeAreas(userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.select().from(lifeAreas).where(eq(lifeAreas.userId, userId));
+  return await withDb(db =>
+    db.select().from(lifeAreas).where(eq(lifeAreas.userId, userId))
+  );
 }
 
 export async function getLifeAreaById(id: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const result = await db.select().from(lifeAreas).where(and(eq(lifeAreas.id, id), eq(lifeAreas.userId, userId)));
+  const result = await withDb(db =>
+    db.select().from(lifeAreas).where(and(eq(lifeAreas.id, id), eq(lifeAreas.userId, userId)))
+  );
   return result[0];
 }
 
 export async function updateLifeArea(id: number, userId: number, data: Partial<typeof lifeAreas.$inferInsert>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.update(lifeAreas).set(data).where(and(eq(lifeAreas.id, id), eq(lifeAreas.userId, userId)));
+  return await withDb(db =>
+    db.update(lifeAreas).set(data).where(and(eq(lifeAreas.id, id), eq(lifeAreas.userId, userId)))
+  );
 }
 
 export async function deleteLifeArea(id: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
   const oldArea = await getLifeAreaById(id, userId);
-  const result = await db.delete(lifeAreas).where(and(eq(lifeAreas.id, id), eq(lifeAreas.userId, userId)));
-  if (oldArea) {
-    await logActivity(userId, 'lifeArea', id, 'deleted', oldArea.name, undefined);
-  }
-  return result;
+
+  return await withDb(async (db) => {
+    return await db.transaction(async (tx) => {
+      const result = await tx.delete(lifeAreas).where(and(eq(lifeAreas.id, id), eq(lifeAreas.userId, userId)));
+
+      if (oldArea) {
+        await tx.insert(activityLog).values({
+          userId, entityType: 'lifeArea', entityId: id, action: 'deleted',
+          oldValue: oldArea.name, newValue: undefined,
+        });
+      }
+
+      return result;
+    });
+  });
 }
 
 // ============ Tag Operations ============
 
 export async function createTag(tag: typeof tags.$inferInsert) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.insert(tags).values(tag);
+  return await withDb(db =>
+    db.insert(tags).values(tag)
+  );
 }
 
 export async function getTags(userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.select().from(tags).where(eq(tags.userId, userId));
+  return await withDb(db =>
+    db.select().from(tags).where(eq(tags.userId, userId))
+  );
 }
 
 export async function updateTag(id: number, userId: number, data: Partial<typeof tags.$inferInsert>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.update(tags).set(data).where(and(eq(tags.id, id), eq(tags.userId, userId)));
+  return await withDb(db =>
+    db.update(tags).set(data).where(and(eq(tags.id, id), eq(tags.userId, userId)))
+  );
 }
 
 export async function deleteTag(id: number, userId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.delete(tags).where(and(eq(tags.id, id), eq(tags.userId, userId)));
+  return await withDb(db =>
+    db.delete(tags).where(and(eq(tags.id, id), eq(tags.userId, userId)))
+  );
 }
 
 // ============ Entity Tag Operations ============
 
 export async function addEntityTag(data: typeof entityTags.$inferInsert) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.insert(entityTags).values(data);
+  return await withDb(db =>
+    db.insert(entityTags).values(data)
+  );
 }
 
 export async function removeEntityTag(tagId: number, entityType: string, entityId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.delete(entityTags).where(
-    and(eq(entityTags.tagId, tagId), eq(entityTags.entityType, entityType), eq(entityTags.entityId, entityId))
+  return await withDb(db =>
+    db.delete(entityTags).where(
+      and(eq(entityTags.tagId, tagId), eq(entityTags.entityType, entityType), eq(entityTags.entityId, entityId))
+    )
   );
 }
 
 export async function getEntityTags(entityType: string, entityId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.select().from(entityTags).where(
-    and(eq(entityTags.entityType, entityType), eq(entityTags.entityId, entityId))
+  return await withDb(db =>
+    db.select().from(entityTags).where(
+      and(eq(entityTags.entityType, entityType), eq(entityTags.entityId, entityId))
+    )
   );
 }
 
 // ============ Subtask Operations ============
 
 export async function createSubtask(subtask: typeof subtasks.$inferInsert) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.insert(subtasks).values(subtask);
+  return await withDb(db =>
+    db.insert(subtasks).values(subtask)
+  );
 }
 
 export async function getSubtasks(taskId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.select().from(subtasks).where(eq(subtasks.taskId, taskId));
+  return await withDb(db =>
+    db.select().from(subtasks).where(eq(subtasks.taskId, taskId))
+  );
 }
 
 export async function updateSubtask(id: number, data: Partial<typeof subtasks.$inferInsert>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  return await withDb(async (db) => {
+    const oldSubtask = await db.select().from(subtasks).where(eq(subtasks.id, id));
+    const result = await db.update(subtasks).set(data).where(eq(subtasks.id, id));
 
-  const oldSubtask = await db.select().from(subtasks).where(eq(subtasks.id, id));
-  const result = await db.update(subtasks).set(data).where(eq(subtasks.id, id));
-
-  if (data.isCompleted && oldSubtask.length > 0) {
-    const parentTaskId = oldSubtask[0].taskId;
-    const allSubtasks = await db.select().from(subtasks).where(eq(subtasks.taskId, parentTaskId));
-    if (allSubtasks.length > 0 && allSubtasks.every(s => s.isCompleted)) {
-      await db.update(tasks).set({ status: 'completed', progress: 100 }).where(eq(tasks.id, parentTaskId));
+    if (data.isCompleted && oldSubtask.length > 0) {
+      const parentTaskId = oldSubtask[0].taskId;
+      const allSubtasks = await db.select().from(subtasks).where(eq(subtasks.taskId, parentTaskId));
+      if (allSubtasks.length > 0 && allSubtasks.every(s => s.isCompleted)) {
+        await db.update(tasks).set({ status: 'completed', progress: 100 }).where(eq(tasks.id, parentTaskId));
+      }
     }
-  }
 
-  return result;
+    return result;
+  });
 }
 
 export async function deleteSubtask(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.delete(subtasks).where(eq(subtasks.id, id));
+  return await withDb(db =>
+    db.delete(subtasks).where(eq(subtasks.id, id))
+  );
 }
 
 // ============ Task Dependency Operations ============
 
 export async function createTaskDependency(data: typeof taskDependencies.$inferInsert) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.insert(taskDependencies).values(data);
+  return await withDb(db =>
+    db.insert(taskDependencies).values(data)
+  );
 }
 
 export async function getTaskDependencies(taskId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.select().from(taskDependencies).where(eq(taskDependencies.taskId, taskId));
+  return await withDb(db =>
+    db.select().from(taskDependencies).where(eq(taskDependencies.taskId, taskId))
+  );
 }
 
 export async function getTaskDependsOn(taskId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.select().from(taskDependencies).where(eq(taskDependencies.dependsOnId, taskId));
+  return await withDb(db =>
+    db.select().from(taskDependencies).where(eq(taskDependencies.dependsOnId, taskId))
+  );
 }
 
 export async function deleteTaskDependency(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return await db.delete(taskDependencies).where(eq(taskDependencies.id, id));
+  return await withDb(db =>
+    db.delete(taskDependencies).where(eq(taskDependencies.id, id))
+  );
 }

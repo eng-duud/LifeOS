@@ -9,7 +9,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { trpc } from "@/lib/trpc";
 import {
   CheckCircle2, Circle, Clock, Flame, ListPlus, Target, Zap,
-  Sparkles, Sunrise, Moon, ArrowLeftFromLine, Plus, Brain,
+  Sparkles, Sunrise, Moon, ArrowRightFromLine, Plus, Brain,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -136,7 +136,7 @@ export default function Today() {
               </p>
             </div>
             <Button variant="ghost" size="sm">
-              <ArrowLeftFromLine className="w-4 h-4" />
+              <ArrowRightFromLine className="w-4 h-4" />
             </Button>
           </CardContent>
         </Card>
@@ -259,7 +259,7 @@ export default function Today() {
               )}
               <Button variant="link" size="sm" className="w-full text-xs" onClick={() => setLocation('/habits')}>
                 إدارة العادات
-                <ArrowLeftFromLine className="w-3 h-3 mr-1" />
+                <ArrowRightFromLine className="w-3 h-3 mr-1" />
               </Button>
             </CardContent>
           </Card>

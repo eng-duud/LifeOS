@@ -6,7 +6,7 @@ import { trpc } from "@/lib/trpc";
 import {
   CheckCircle2, AlertCircle, TrendingUp, Clock, Flame, AlertTriangle,
   ArrowRight, Circle, ListPlus, Target, Zap, Brain, Activity, BarChart3,
-  ArrowLeftFromLine, Sparkles, Layers,
+  ArrowRightFromLine, Sparkles, Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -303,7 +303,7 @@ export default function Dashboard() {
                 </div>
                 <Button variant="link" size="sm" className="w-full mt-1 text-xs" onClick={() => setLocation('/tasks')}>
                   إدارة صندوق الوارد
-                  <ArrowLeftFromLine className="w-3 h-3 mr-1" />
+                  <ArrowRightFromLine className="w-3 h-3 mr-1" />
                 </Button>
               </CardContent>
             </Card>
@@ -366,7 +366,7 @@ export default function Dashboard() {
                 </div>
                 <Button variant="link" size="sm" className="w-full mt-1 text-xs" onClick={() => setLocation('/goals')}>
                   عرض الأهداف
-                  <ArrowLeftFromLine className="w-3 h-3 mr-1" />
+                  <ArrowRightFromLine className="w-3 h-3 mr-1" />
                 </Button>
               </CardContent>
             </Card>

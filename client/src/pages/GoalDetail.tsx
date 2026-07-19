@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/ui/date-picker';
 import { trpc } from "@/lib/trpc";
 import { useRoute, useLocation } from "wouter";
-import { Zap, Plus, ArrowLeft, Calendar, Target, CheckCircle2, Circle, Edit2, Trash2 } from "lucide-react";
+import { Zap, Plus, ArrowRight, Calendar, Target, CheckCircle2, Circle, Edit2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -98,7 +98,7 @@ export default function GoalDetail() {
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <Button variant="ghost" size="sm" className="mb-3" onClick={() => setLocation('/goals')}>
-        <ArrowLeft className="w-4 h-4 ml-1" />
+        <ArrowRight className="w-4 h-4 ml-1" />
         العودة للأهداف
       </Button>
 

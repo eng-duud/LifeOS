@@ -33,7 +33,6 @@ import {
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 
 const menuItems = [
   { icon: Gauge, label: "مركز القيادة", path: "/dashboard" },
@@ -114,8 +113,8 @@ function DashboardLayoutContent({
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
 
-      const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left ?? 0;
-      const newWidth = e.clientX - sidebarLeft;
+      const rect = sidebarRef.current!.getBoundingClientRect();
+      const newWidth = rect.right - e.clientX;
       if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
         setSidebarWidth(newWidth);
       }
@@ -144,9 +143,13 @@ function DashboardLayoutContent({
     <>
       <div className="relative" ref={sidebarRef}>
         <Sidebar
+          variant="sidebar"
+          side="right"
           collapsible="icon"
-          className="border-r-0"
+          className="border-l-0"
           disableTransition={isResizing}
+          role="navigation"
+          aria-label="القائمة الرئيسية"
         >
           <SidebarHeader className="h-16 justify-center">
             <div className="flex items-center gap-3 px-2 transition-all w-full">
@@ -190,18 +193,18 @@ function DashboardLayoutContent({
             </SidebarMenu>
           </SidebarContent>
 
-          <SidebarFooter className="p-3">
-            <div className="flex items-center gap-3 px-1 py-1 rounded-lg">
-              <Avatar className="h-9 w-9 border shrink-0">
-                <AvatarFallback className="text-xs font-medium">
+          <SidebarFooter className="p-2">
+            <div className="flex items-center gap-2 px-1 py-0.5 rounded-lg">
+              <Avatar className="h-7 w-7 border shrink-0">
+                <AvatarFallback className="text-[10px] font-medium">
                   L
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-                <p className="text-sm font-medium truncate leading-none">
+                <p className="text-xs font-medium truncate leading-none">
                   Life OS
                 </p>
-                <p className="text-xs text-muted-foreground truncate mt-1.5">
+                <p className="text-[10px] text-muted-foreground truncate mt-1">
                   المستخدم
                 </p>
               </div>
@@ -209,7 +212,7 @@ function DashboardLayoutContent({
           </SidebarFooter>
         </Sidebar>
         <div
-          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
+          className={`absolute top-0 left-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
           onMouseDown={() => {
             if (isCollapsed) return;
             setIsResizing(true);
