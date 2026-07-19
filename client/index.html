@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover" />
+    <title>Life OS — نظام تشغيل الحياة</title>
+    <meta name="description" content="نظام متكامل لإدارة الحياة: المهام، المشاريع، الأهداف، العادات، والإحصائيات" />
+    <meta name="author" content="Life OS" />
+
+    <!-- PWA / Mobile -->
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="Life OS" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Life OS" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="apple-touch-fullscreen" content="yes" />
+
+    <!-- Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Favicons -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+    <!-- Apple Touch Icons -->
+    <link rel="apple-touch-icon" sizes="152x152" href="/apple-touch-icon-152.png" />
+    <link rel="apple-touch-icon" sizes="167x167" href="/apple-touch-icon-167.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon-180.png" />
+
+    <!-- Apple Startup Image (Splash Screen) -->
+    <link rel="apple-touch-startup-image" href="/icon-512.png" />
+
+    <!-- Microsoft Tiles -->
+    <meta name="msapplication-TileColor" content="#0f172a" />
+    <meta name="msapplication-TileImage" content="/icon-144.png" />
+    <meta name="msapplication-config" content="none" />
+    <meta name="msapplication-tap-highlight" content="no" />
+
+    <!-- Open Graph / Social -->
+    <meta property="og:title" content="Life OS — نظام تشغيل الحياة" />
+    <meta property="og:description" content="نظام متكامل لإدارة الحياة: المهام، المشاريع، الأهداف، العادات، والإحصائيات" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/icon-512.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:locale" content="ar_AR" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Life OS — نظام تشغيل الحياة" />
+    <meta name="twitter:description" content="نظام متكامل لإدارة الحياة: المهام، المشاريع، الأهداف، العادات، والإحصائيات" />
+    <meta name="twitter:image" content="/icon-512.png" />
+
+    <!-- DNS Prefetch / Preconnect -->
+    <link rel="dns-prefetch" href="/" />
+    <link rel="preconnect" href="/" />
+
+    <!-- Preload Critical Assets -->
+    <link rel="preload" href="/icon-192.png" as="image" />
+    <link rel="preload" href="/icon-512.png" as="image" />
+
+    <!-- Robots -->
+    <meta name="robots" content="index, follow" />
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Register Service Worker
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js', {
+            scope: '/',
+          }).then((registration) => {
+            // Check for updates
+            registration.addEventListener('updatefound', () => {
+              const newWorker = registration.installing;
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // New version available
+                  console.log('🔄 Life OS: تحديث جديد متاح');
+                }
+              });
+            });
+          }).catch((err) => {
+            console.warn('Life OS: ServiceWorker registration failed:', err);
+          });
+        });
+
+        // Detect controller change (new SW activated)
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!refreshing) {
+            refreshing = true;
+            window.location.reload();
+          }
+        });
+      }
+
+      // PWA install prompt
+      let deferredPrompt = null;
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        // Dispatch custom event for the UI to show install button
+        window.dispatchEvent(new CustomEvent('pwa-install-ready', { detail: e }));
+      });
+
+      window.addEventListener('appinstalled', () => {
+        deferredPrompt = null;
+        console.log('✅ Life OS: تم تثبيت التطبيق');
+        window.dispatchEvent(new CustomEvent('pwa-installed'));
+      });
+    </script>
+
+  </body>
+
+</html>

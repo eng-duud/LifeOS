@@ -1,0 +1,192 @@
+{
+  "name": "Life OS — نظام تشغيل الحياة",
+  "short_name": "Life OS",
+  "description": "نظام متكامل لإدارة الحياة: المهام، المشاريع، الأهداف، العادات، والإحصائيات — كل ما تحتاجه لتعيش حياة منظمة ومنتجة",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "window-controls-overlay", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "lang": "ar",
+  "dir": "rtl",
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a",
+  "id": "life-os-v2",
+  "edge_side_panel": {
+    "preferred_width": 360
+  },
+  "categories": ["productivity", "lifestyle", "utilities"],
+  "screenshots": [
+    {
+      "src": "/screenshot-dashboard-wide.png",
+      "sizes": "1280x800",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "لوحة القيادة — نظرة شاملة على أدائك اليومي"
+    },
+    {
+      "src": "/screenshot-tasks.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "إدارة المهام — من الفكرة إلى الإنجاز"
+    },
+    {
+      "src": "/screenshot-stats.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "الإحصائيات — قياس الأداء وتحليل الاتجاهات"
+    }
+  ],
+  "icons": [
+    {
+      "src": "/icon-48.png",
+      "sizes": "48x48",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "monochrome"
+    },
+    {
+      "src": "/icon-128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-167.png",
+      "sizes": "167x167",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "monochrome"
+    },
+    {
+      "src": "/icon-192-maskable.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-256.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "اليوم — مهام اليوم",
+      "short_name": "اليوم",
+      "description": "عرض مهام اليوم وجدول العمل",
+      "url": "/today",
+      "icons": [
+        {
+          "src": "/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "مركز القيادة",
+      "short_name": "الرئيسية",
+      "description": "لوحة القيادة الرئيسية",
+      "url": "/dashboard"
+    },
+    {
+      "name": "إضافة مهمة",
+      "short_name": "مهمة جديدة",
+      "description": "إضافة مهمة سريعة",
+      "url": "/tasks?quickadd=true",
+      "icons": [
+        {
+          "src": "/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "الإحصائيات",
+      "short_name": "إحصائيات",
+      "description": "عرض الإحصائيات والتقارير",
+      "url": "/statistics",
+      "icons": [
+        {
+          "src": "/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "المراجعة",
+      "short_name": "مراجعة",
+      "description": "المراجعة الأسبوعية والتقييم",
+      "url": "/review"
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false,
+  "handle_links": "preferred",
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
+  "serviceworker": {
+    "src": "/sw.js",
+    "scope": "/",
+    "use_cache": false
+  }
+}
