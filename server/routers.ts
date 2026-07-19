@@ -3,6 +3,7 @@ import { publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import * as db from "./db";
 import { invokeLLM } from "./_core/llm";
+import { type Task, type Goal, type Habit, type Project, type LifeArea } from "../drizzle/schema";
 
 const OWNER_USER_ID = 1;
 
@@ -405,9 +406,10 @@ export const appRouter = router({
         db.getHealthStatus(OWNER_USER_ID),
       ]);
 
-      const todayHabits = habits.filter(h => {
-        const completedToday = h.lastCompletedAt && new Date(h.lastCompletedAt).toDateString() === new Date().toDateString();
-        return !completedToday;
+      const todayStr = new Date().toDateString();
+      const todayHabits = habits.filter((h: Habit) => {
+        const completedToday = h.lastCompletedAt && new Date(h.lastCompletedAt).toDateString() === todayStr;
+        return h.frequency === 'daily' || completedToday;
       });
 
       return {
@@ -418,62 +420,28 @@ export const appRouter = router({
     }),
 
     review: publicProcedure.query(async () => {
-      const [allTasks, allHabits] = await Promise.all([
+      const [allTasks, allHabits, stats] = await Promise.all([
         db.getTasks(OWNER_USER_ID),
         db.getHabits(OWNER_USER_ID),
+        db.getDashboardStats(OWNER_USER_ID),
       ]);
 
       const todayStr = new Date().toDateString();
-
-      const completedToday = allTasks.filter(t => t.status === 'completed' && t.completedAt && new Date(t.completedAt).toDateString() === todayStr);
-      const uncompletedToday = allTasks.filter(t => {
+      const completedToday = allTasks.filter((t: Task) => t.status === 'completed' && t.completedAt && new Date(t.completedAt).toDateString() === todayStr);
+      const uncompletedToday = allTasks.filter((t: Task) => {
         if (t.status === 'completed' || t.status === 'cancelled') return false;
-        if (!t.dueDate) return false;
-        return new Date(t.dueDate).toDateString() === todayStr;
+        return t.dueDate && new Date(t.dueDate).toDateString() === todayStr;
       });
 
-      const habitsDoneToday = allHabits.filter(h => h.lastCompletedAt && new Date(h.lastCompletedAt).toDateString() === todayStr).length;
-      const habitsTotal = allHabits.length;
+      const habitsDoneToday = allHabits.filter((h: Habit) => h.lastCompletedAt && new Date(h.lastCompletedAt).toDateString() === todayStr).length;
 
       return {
-        completedToday,
-        uncompletedToday,
-        habitsDoneToday,
-        habitsTotal,
-        totalCompleted: completedToday.length,
-        totalPending: uncompletedToday.length,
+        completedTasks: completedToday,
+        pendingTasks: uncompletedToday,
+        habitsDone: habitsDoneToday,
+        totalHabits: allHabits.length,
+        stats,
       };
-    }),
-  }),
-
-  // ============ Hierarchy Router ============
-  hierarchy: router({
-    full: publicProcedure.query(async () => {
-      return await db.getHierarchy(OWNER_USER_ID);
-    }),
-
-    area: publicProcedure
-      .input(z.object({ areaId: z.number().positive().int() }))
-      .query(async ({ input }) => {
-        return await db.getLifeAreaById(input.areaId, OWNER_USER_ID);
-      }),
-  }),
-
-  // ============ Statistics Router ============
-  statistics: router({
-    get: publicProcedure.query(async () => {
-      return await db.getStatistics(OWNER_USER_ID);
-    }),
-
-    update: publicProcedure.mutation(async () => {
-      return await db.updateStatistics(OWNER_USER_ID);
-    }),
-  }),
-
-  // ============ Activity Log Router ============
-  activityLog: router({
-    list: publicProcedure.query(async () => {
-      return await db.getActivityLog(OWNER_USER_ID);
     }),
   }),
 
@@ -498,7 +466,10 @@ export const appRouter = router({
         sortOrder: z.number().int().min(0).optional(),
       }))
       .mutation(async ({ input }) => {
-        return await db.createLifeArea({ userId: OWNER_USER_ID, ...input });
+        return await db.createLifeArea({
+          userId: OWNER_USER_ID,
+          ...input,
+        });
       }),
 
     update: publicProcedure
@@ -670,22 +641,22 @@ export const appRouter = router({
           db.getLifeAreas(OWNER_USER_ID),
         ]);
 
-        const pendingTasks = tasks.filter((t: any) => t.status === 'pending' || t.status === 'in_progress');
-        const overdueTasks = pendingTasks.filter((t: any) => t.dueDate && new Date(t.dueDate) < new Date());
-        const activeGoals = goals.filter((g: any) => g.status === 'active');
-        const activeProjects = projects.filter((p: any) => p.status === 'in_progress' || p.status === 'planning');
+        const pendingTasks = tasks.filter((t: Task) => t.status === 'pending' || t.status === 'in_progress');
+        const overdueTasks = pendingTasks.filter((t: Task) => t.dueDate && new Date(t.dueDate) < new Date());
+        const activeGoals = goals.filter((g: Goal) => g.status === 'active');
+        const activeProjects = projects.filter((p: Project) => p.status === 'in_progress' || p.status === 'planning');
 
         const systemPrompt = `أنت مساعد ذكي لتطبيق "Life OS" لإدارة الحياة والإنتاجية. تتحدث باللغة العربية.
 
 ملخص بيانات المستخدم الحالية:
-- مناطق الحياة: ${lifeAreas.length} مناطق${lifeAreas.length > 0 ? ` (${lifeAreas.map((a: any) => a.name).join('، ')})` : ''}
+- مناطق الحياة: ${lifeAreas.length} مناطق${lifeAreas.length > 0 ? ` (${lifeAreas.map((a: LifeArea) => a.name).join('، ')})` : ''}
 - المهام المعلقة: ${pendingTasks.length} مهمة${overdueTasks.length > 0 ? ` (${overdueTasks.length} متأخرة)` : ''}
 - الأهداف النشطة: ${activeGoals.length} هدف
 - المشاريع النشطة: ${activeProjects.length} مشروع
 - العادات: ${habits.length} عادة
 
-${pendingTasks.length > 0 ? `أهم المهام المعلقة: ${pendingTasks.slice(0, 5).map((t: any) => t.title).join('، ')}` : ''}
-${activeGoals.length > 0 ? `الأهداف النشطة: ${activeGoals.slice(0, 5).map((g: any) => `${g.title} (${g.progress || 0}%)`).join('، ')}` : ''}
+${pendingTasks.length > 0 ? `أهم المهام المعلقة: ${pendingTasks.slice(0, 5).map((t: Task) => t.title).join('، ')}` : ''}
+${activeGoals.length > 0 ? `الأهداف النشطة: ${activeGoals.slice(0, 5).map((g: Goal) => `${g.title} (${g.progress || 0}%)`).join('، ')}` : ''}
 
 قواعد الرد:
 - أجب بشكل مختصر ومفيد باللغة العربية

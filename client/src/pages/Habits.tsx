@@ -332,7 +332,8 @@ function HabitCard({
   onDelete: () => void;
   isCompleting: boolean;
 }) {
-  const { data: completions } = trpc.habits.completions.useQuery({ habitId: habit.id });
+  const { data: completionsData } = trpc.habits.completions.useQuery({ habitId: habit.id });
+  const completions = Array.isArray(completionsData) ? completionsData : [];
 
   return (
     <Card className={`relative overflow-hidden transition-all ${completedToday ? 'ring-2 ring-green-500/30' : ''}`}>
@@ -387,9 +388,9 @@ function HabitCard({
                 <span className="font-semibold">{habit.currentStreak}</span>
                 <span className="text-muted-foreground">يوم متتالي</span>
               </div>
-              {habit.bestStreak > 0 && (
+              {habit.longestStreak > 0 && (
                 <div className="flex items-center gap-1 text-muted-foreground">
-                  <span>أفضل سلسلة: <span className="font-semibold text-foreground">{habit.bestStreak}</span></span>
+                  <span>أفضل سلسلة: <span className="font-semibold text-foreground">{habit.longestStreak}</span></span>
                 </div>
               )}
               {habit.lastCompletedAt && (

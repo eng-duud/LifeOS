@@ -115,11 +115,13 @@ export const projects = pgTable("projects", {
   completedAt: timestamp("completedAt"),
   priority: priorityEnum("priority").default("medium").notNull(),
   areaId: integer("areaId").references(() => lifeAreas.id, { onDelete: "set null" }),
+  goalId: integer("goalId").references(() => goals.id, { onDelete: "set null" }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (table) => ({
   userIdIdx: index("projects_userId_idx").on(table.userId),
   areaIdIdx: index("projects_areaId_idx").on(table.areaId),
+  goalIdIdx: index("projects_goalId_idx").on(table.goalId),
 }));
 
 export type Project = typeof projects.$inferSelect;

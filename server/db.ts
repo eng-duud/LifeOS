@@ -20,6 +20,15 @@ import {
   entityTags,
   subtasks,
   taskDependencies,
+  type Task,
+  type Goal,
+  type Project,
+  type Habit,
+  type Book,
+  type Plan,
+  type LifeArea,
+  type Subtask,
+  type TaskDependency,
 } from "../drizzle/schema";
 
 let _db: any = null;
@@ -34,11 +43,11 @@ export async function getDb() {
       _db = null;
     }
   }
-  return _db as any;
+  return _db;
 }
 
 // ── Database query helper ──────────────────────────────────────────────────
-async function withDb(fn: (db: any) => any): Promise<any> {
+async function withDb<T>(fn: (db: any) => Promise<T>): Promise<T> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return fn(db);
@@ -81,7 +90,7 @@ async function recalculateProjectProgress(projectId: number, userId: number) {
   const projectTasks = await withDb(db =>
     db.select().from(tasks)
       .where(and(eq(tasks.projectId, projectId), eq(tasks.userId, userId)))
-  );
+  ) as Task[];
 
   const completedCount = projectTasks.filter(t => t.status === 'completed').length;
   const progress = projectTasks.length > 0
@@ -97,7 +106,7 @@ async function recalculateGoalProgress(goalId: number, userId: number) {
   const goalTasks = await withDb(db =>
     db.select().from(tasks)
       .where(and(eq(tasks.goalId, goalId), eq(tasks.userId, userId)))
-  );
+  ) as Task[];
 
   const completedCount = goalTasks.filter(t => t.status === 'completed').length;
   const progress = goalTasks.length > 0
@@ -119,11 +128,11 @@ async function recalculateAreaHealth(areaId: number, userId: number) {
     withDb(db =>
       db.select().from(goals)
         .where(and(eq(goals.areaId, areaId), eq(goals.userId, userId)))
-    ),
+    ) as Promise<Goal[]>,
     withDb(db =>
       db.select().from(habits)
         .where(and(eq(habits.areaId, areaId), eq(habits.userId, userId)))
-    ),
+    ) as Promise<Habit[]>,
   ]);
 
   const avgGoalProgress = areaGoals.length > 0
@@ -144,13 +153,13 @@ async function recalculateAreaHealth(areaId: number, userId: number) {
 
 export async function createTask(task: typeof tasks.$inferInsert) {
   return await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const result = await tx.insert(tasks).values(task);
+    return await db.transaction(async (tx: any) => {
+      const result = await tx.insert(tasks).values(task).returning();
 
       await tx.insert(activityLog).values({
         userId: task.userId,
         entityType: 'task',
-        entityId: 0,
+        entityId: result[0].id,
         action: 'created',
         oldValue: undefined,
         newValue: task.title,
@@ -160,7 +169,7 @@ export async function createTask(task: typeof tasks.$inferInsert) {
         await recalculateProjectProgress(task.projectId, task.userId);
       }
 
-      return result;
+      return result[0];
     });
   });
 }
@@ -168,13 +177,13 @@ export async function createTask(task: typeof tasks.$inferInsert) {
 export async function getTasks(userId: number) {
   return await withDb(db =>
     db.select().from(tasks).where(eq(tasks.userId, userId))
-  );
+  ) as Task[];
 }
 
 export async function getTaskById(id: number, userId: number) {
   const result = await withDb(db =>
     db.select().from(tasks).where(and(eq(tasks.id, id), eq(tasks.userId, userId)))
-  );
+  ) as Task[];
   return result[0];
 }
 
@@ -182,8 +191,8 @@ export async function updateTask(id: number, userId: number, data: Partial<typeo
   const oldTask = await getTaskById(id, userId);
 
   const result = await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const r = await tx.update(tasks).set(data).where(and(eq(tasks.id, id), eq(tasks.userId, userId)));
+    return await db.transaction(async (tx: any) => {
+      const r = await tx.update(tasks).set(data).where(and(eq(tasks.id, id), eq(tasks.userId, userId))).returning();
 
       if (oldTask) {
         if (data.status && data.status !== oldTask.status) {
@@ -201,7 +210,7 @@ export async function updateTask(id: number, userId: number, data: Partial<typeo
         }
       }
 
-      return r;
+      return r[0];
     });
   });
 
@@ -217,8 +226,8 @@ export async function deleteTask(id: number, userId: number) {
   const oldTask = await getTaskById(id, userId);
 
   const result = await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const r = await tx.delete(tasks).where(and(eq(tasks.id, id), eq(tasks.userId, userId)));
+    return await db.transaction(async (tx: any) => {
+      const r = await tx.delete(tasks).where(and(eq(tasks.id, id), eq(tasks.userId, userId))).returning();
 
       if (oldTask) {
         await tx.insert(activityLog).values({
@@ -227,7 +236,7 @@ export async function deleteTask(id: number, userId: number) {
         });
       }
 
-      return r;
+      return r[0];
     });
   });
 
@@ -242,19 +251,19 @@ export async function deleteTask(id: number, userId: number) {
 
 export async function createGoal(goal: typeof goals.$inferInsert) {
   return await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const result = await tx.insert(goals).values(goal);
+    return await db.transaction(async (tx: any) => {
+      const result = await tx.insert(goals).values(goal).returning();
 
       await tx.insert(activityLog).values({
         userId: goal.userId,
         entityType: 'goal',
-        entityId: 0,
+        entityId: result[0].id,
         action: 'created',
         oldValue: undefined,
         newValue: goal.title,
       });
 
-      return result;
+      return result[0];
     });
   });
 }
@@ -262,13 +271,13 @@ export async function createGoal(goal: typeof goals.$inferInsert) {
 export async function getGoals(userId: number) {
   return await withDb(db =>
     db.select().from(goals).where(eq(goals.userId, userId))
-  );
+  ) as Goal[];
 }
 
 export async function getGoalById(id: number, userId: number) {
   const result = await withDb(db =>
     db.select().from(goals).where(and(eq(goals.id, id), eq(goals.userId, userId)))
-  );
+  ) as Goal[];
   return result[0];
 }
 
@@ -276,8 +285,8 @@ export async function updateGoal(id: number, userId: number, data: Partial<typeo
   const oldGoal = await getGoalById(id, userId);
 
   return await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const result = await tx.update(goals).set(data).where(and(eq(goals.id, id), eq(goals.userId, userId)));
+    return await db.transaction(async (tx: any) => {
+      const result = await tx.update(goals).set(data).where(and(eq(goals.id, id), eq(goals.userId, userId))).returning();
 
       if (data.status === 'completed' && oldGoal && oldGoal.status !== 'completed') {
         await tx.insert(activityLog).values({
@@ -286,7 +295,7 @@ export async function updateGoal(id: number, userId: number, data: Partial<typeo
         });
       }
 
-      return result;
+      return result[0];
     });
   });
 }
@@ -295,8 +304,8 @@ export async function deleteGoal(id: number, userId: number) {
   const oldGoal = await getGoalById(id, userId);
 
   return await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const result = await tx.delete(goals).where(and(eq(goals.id, id), eq(goals.userId, userId)));
+    return await db.transaction(async (tx: any) => {
+      const result = await tx.delete(goals).where(and(eq(goals.id, id), eq(goals.userId, userId))).returning();
 
       if (oldGoal) {
         await tx.insert(activityLog).values({
@@ -305,7 +314,7 @@ export async function deleteGoal(id: number, userId: number) {
         });
       }
 
-      return result;
+      return result[0];
     });
   });
 }
@@ -314,19 +323,19 @@ export async function deleteGoal(id: number, userId: number) {
 
 export async function createProject(project: typeof projects.$inferInsert) {
   return await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const result = await tx.insert(projects).values(project);
+    return await db.transaction(async (tx: any) => {
+      const result = await tx.insert(projects).values(project).returning();
 
       await tx.insert(activityLog).values({
         userId: project.userId,
         entityType: 'project',
-        entityId: 0,
+        entityId: result[0].id,
         action: 'created',
         oldValue: undefined,
         newValue: project.title,
       });
 
-      return result;
+      return result[0];
     });
   });
 }
@@ -334,13 +343,13 @@ export async function createProject(project: typeof projects.$inferInsert) {
 export async function getProjects(userId: number) {
   return await withDb(db =>
     db.select().from(projects).where(eq(projects.userId, userId))
-  );
+  ) as Project[];
 }
 
 export async function getProjectById(id: number, userId: number) {
   const result = await withDb(db =>
     db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, userId)))
-  );
+  ) as Project[];
   return result[0];
 }
 
@@ -348,8 +357,8 @@ export async function updateProject(id: number, userId: number, data: Partial<ty
   const oldProject = await getProjectById(id, userId);
 
   return await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const result = await tx.update(projects).set(data).where(and(eq(projects.id, id), eq(projects.userId, userId)));
+    return await db.transaction(async (tx: any) => {
+      const result = await tx.update(projects).set(data).where(and(eq(projects.id, id), eq(projects.userId, userId))).returning();
 
       if (data.status === 'completed' && oldProject && oldProject.status !== 'completed') {
         await tx.insert(activityLog).values({
@@ -358,7 +367,7 @@ export async function updateProject(id: number, userId: number, data: Partial<ty
         });
       }
 
-      return result;
+      return result[0];
     });
   });
 }
@@ -367,8 +376,8 @@ export async function deleteProject(id: number, userId: number) {
   const oldProject = await getProjectById(id, userId);
 
   return await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const result = await tx.delete(projects).where(and(eq(projects.id, id), eq(projects.userId, userId)));
+    return await db.transaction(async (tx: any) => {
+      const result = await tx.delete(projects).where(and(eq(projects.id, id), eq(projects.userId, userId))).returning();
 
       if (oldProject) {
         await tx.insert(activityLog).values({
@@ -377,7 +386,7 @@ export async function deleteProject(id: number, userId: number) {
         });
       }
 
-      return result;
+      return result[0];
     });
   });
 }
@@ -386,19 +395,19 @@ export async function deleteProject(id: number, userId: number) {
 
 export async function createHabit(habit: typeof habits.$inferInsert) {
   return await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const result = await tx.insert(habits).values(habit);
+    return await db.transaction(async (tx: any) => {
+      const result = await tx.insert(habits).values(habit).returning();
 
       await tx.insert(activityLog).values({
         userId: habit.userId,
         entityType: 'habit',
-        entityId: 0,
+        entityId: result[0].id,
         action: 'created',
         oldValue: undefined,
         newValue: habit.title,
       });
 
-      return result;
+      return result[0];
     });
   });
 }
@@ -406,28 +415,28 @@ export async function createHabit(habit: typeof habits.$inferInsert) {
 export async function getHabits(userId: number) {
   return await withDb(db =>
     db.select().from(habits).where(eq(habits.userId, userId))
-  );
+  ) as Habit[];
 }
 
 export async function getHabitById(id: number, userId: number) {
   const result = await withDb(db =>
     db.select().from(habits).where(and(eq(habits.id, id), eq(habits.userId, userId)))
-  );
+  ) as Habit[];
   return result[0];
 }
 
 export async function updateHabit(id: number, userId: number, data: Partial<typeof habits.$inferInsert>) {
   return await withDb(db =>
-    db.update(habits).set(data).where(and(eq(habits.id, id), eq(habits.userId, userId)))
-  );
+    db.update(habits).set(data).where(and(eq(habits.id, id), eq(habits.userId, userId))).returning()
+  ).then(r => (r as any[])[0]);
 }
 
 export async function deleteHabit(id: number, userId: number) {
   const oldHabit = await getHabitById(id, userId);
 
   return await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const result = await tx.delete(habits).where(and(eq(habits.id, id), eq(habits.userId, userId)));
+    return await db.transaction(async (tx: any) => {
+      const result = await tx.delete(habits).where(and(eq(habits.id, id), eq(habits.userId, userId))).returning();
 
       if (oldHabit) {
         await tx.insert(activityLog).values({
@@ -436,7 +445,7 @@ export async function deleteHabit(id: number, userId: number) {
         });
       }
 
-      return result;
+      return result[0];
     });
   });
 }
@@ -480,19 +489,19 @@ export async function getHabitCompletions(habitId: number, userId: number) {
 
 export async function createBook(book: typeof books.$inferInsert) {
   return await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const result = await tx.insert(books).values(book);
+    return await db.transaction(async (tx: any) => {
+      const result = await tx.insert(books).values(book).returning();
 
       await tx.insert(activityLog).values({
         userId: book.userId,
         entityType: 'book',
-        entityId: 0,
+        entityId: result[0].id,
         action: 'created',
         oldValue: undefined,
         newValue: book.title,
       });
 
-      return result;
+      return result[0];
     });
   });
 }
@@ -500,13 +509,13 @@ export async function createBook(book: typeof books.$inferInsert) {
 export async function getBooks(userId: number) {
   return await withDb(db =>
     db.select().from(books).where(eq(books.userId, userId))
-  );
+  ) as Book[];
 }
 
 export async function getBookById(id: number, userId: number) {
   const result = await withDb(db =>
     db.select().from(books).where(and(eq(books.id, id), eq(books.userId, userId)))
-  );
+  ) as Book[];
   return result[0];
 }
 
@@ -515,8 +524,8 @@ export async function updateBook(id: number, userId: number, data: Partial<typeo
   const oldStatus = oldBook?.status;
 
   return await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const result = await tx.update(books).set(data).where(and(eq(books.id, id), eq(books.userId, userId)));
+    return await db.transaction(async (tx: any) => {
+      const result = await tx.update(books).set(data).where(and(eq(books.id, id), eq(books.userId, userId))).returning();
 
       if (data.status && oldStatus && data.status !== oldStatus && data.status === 'completed') {
         await tx.insert(activityLog).values({
@@ -525,7 +534,7 @@ export async function updateBook(id: number, userId: number, data: Partial<typeo
         });
       }
 
-      return result;
+      return result[0];
     });
   });
 }
@@ -534,8 +543,8 @@ export async function deleteBook(id: number, userId: number) {
   const oldBook = await getBookById(id, userId);
 
   return await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const result = await tx.delete(books).where(and(eq(books.id, id), eq(books.userId, userId)));
+    return await db.transaction(async (tx: any) => {
+      const result = await tx.delete(books).where(and(eq(books.id, id), eq(books.userId, userId))).returning();
 
       if (oldBook) {
         await tx.insert(activityLog).values({
@@ -544,7 +553,7 @@ export async function deleteBook(id: number, userId: number) {
         });
       }
 
-      return result;
+      return result[0];
     });
   });
 }
@@ -553,19 +562,19 @@ export async function deleteBook(id: number, userId: number) {
 
 export async function createPlan(plan: typeof plans.$inferInsert) {
   return await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const result = await tx.insert(plans).values(plan);
+    return await db.transaction(async (tx: any) => {
+      const result = await tx.insert(plans).values(plan).returning();
 
       await tx.insert(activityLog).values({
         userId: plan.userId,
         entityType: 'plan',
-        entityId: 0,
+        entityId: result[0].id,
         action: 'created',
         oldValue: undefined,
         newValue: plan.title,
       });
 
-      return result;
+      return result[0];
     });
   });
 }
@@ -573,26 +582,26 @@ export async function createPlan(plan: typeof plans.$inferInsert) {
 export async function getPlans(userId: number) {
   return await withDb(db =>
     db.select().from(plans).where(eq(plans.userId, userId))
-  );
+  ) as Plan[];
 }
 
 export async function getPlanById(id: number, userId: number) {
   const result = await withDb(db =>
     db.select().from(plans).where(and(eq(plans.id, id), eq(plans.userId, userId)))
-  );
+  ) as Plan[];
   return result[0];
 }
 
 export async function updatePlan(id: number, userId: number, data: Partial<typeof plans.$inferInsert>) {
   return await withDb(db =>
-    db.update(plans).set(data).where(and(eq(plans.id, id), eq(plans.userId, userId)))
-  );
+    db.update(plans).set(data).where(and(eq(plans.id, id), eq(plans.userId, userId))).returning()
+  ).then(r => (r as any[])[0]);
 }
 
 export async function deletePlan(id: number, userId: number) {
   return await withDb(db =>
-    db.delete(plans).where(and(eq(plans.id, id), eq(plans.userId, userId)))
-  );
+    db.delete(plans).where(and(eq(plans.id, id), eq(plans.userId, userId))).returning()
+  ).then(r => (r as any[])[0]);
 }
 
 // ============ Statistics Operations ============
@@ -638,7 +647,7 @@ export async function updateStatistics(userId: number) {
 export async function getHealthStatus(userId: number) {
   const result = await withDb(db =>
     db.select().from(healthStatus).where(eq(healthStatus.userId, userId))
-  );
+  ) as any[];
   return result[0];
 }
 
@@ -674,8 +683,8 @@ export async function updateHealthStatus(userId: number) {
     if (existing) {
       await db.update(healthStatus).set({
         status,
-        taskCompletionRate: taskCompletionRate.toString() as any,
-        goalProgress: goalProgress.toString() as any,
+        taskCompletionRate: taskCompletionRate.toString(),
+        goalProgress: goalProgress.toString(),
         habitStreak,
         overallScore,
         lastUpdatedAt: new Date(),
@@ -684,11 +693,11 @@ export async function updateHealthStatus(userId: number) {
       await db.insert(healthStatus).values({
         userId,
         status,
-        taskCompletionRate: taskCompletionRate.toString() as any,
-        goalProgress: goalProgress.toString() as any,
+        taskCompletionRate: taskCompletionRate.toString(),
+        goalProgress: goalProgress.toString(),
         habitStreak,
         overallScore,
-      } as any);
+      });
     }
   });
 
@@ -736,10 +745,7 @@ export async function getDashboardStats(userId: number) {
 // ============ Today & Focus Queries ============
 
 export async function getTodayTasks(userId: number) {
-  const allTasks = await withDb(db =>
-    db.select().from(tasks).where(eq(tasks.userId, userId))
-  );
-
+  const allTasks = await getTasks(userId);
   const todayStr = new Date().toDateString();
 
   return allTasks.filter(t => {
@@ -750,9 +756,7 @@ export async function getTodayTasks(userId: number) {
 }
 
 export async function getOverdueTasks(userId: number) {
-  const allTasks = await withDb(db =>
-    db.select().from(tasks).where(eq(tasks.userId, userId))
-  );
+  const allTasks = await getTasks(userId);
   const now = new Date();
 
   return allTasks.filter(t => {
@@ -780,9 +784,9 @@ export async function getBlockedTasks(userId: number) {
   const deps = await withDb(db =>
     db.select().from(taskDependencies)
       .where(inArray(taskDependencies.taskId, activeTaskIds))
-  );
+  ) as TaskDependency[];
 
-  const blocked: any[] = [];
+  const blocked: { task: Task; blockedBy: Task }[] = [];
 
   for (const dep of deps) {
     if (dep.type === 'blocked_by') {
@@ -801,14 +805,14 @@ export async function getTasksByProject(projectId: number, userId: number) {
   return await withDb(db =>
     db.select().from(tasks)
       .where(and(eq(tasks.projectId, projectId), eq(tasks.userId, userId)))
-  );
+  ) as Task[];
 }
 
 export async function getTasksByGoal(goalId: number, userId: number) {
   const goalTasks = await withDb(db =>
     db.select().from(tasks)
       .where(and(eq(tasks.goalId, goalId), eq(tasks.userId, userId)))
-  );
+  ) as Task[];
 
   return { tasks: goalTasks };
 }
@@ -816,7 +820,6 @@ export async function getTasksByGoal(goalId: number, userId: number) {
 export async function getHierarchy(userId: number) {
   const allAreas = await getLifeAreas(userId);
   const allGoals = await getGoals(userId);
-  const allProjects = await getProjects(userId);
   const allTasks = await getTasks(userId);
 
   return allAreas.map(area => ({
@@ -834,19 +837,19 @@ export async function getHierarchy(userId: number) {
 
 export async function createLifeArea(area: typeof lifeAreas.$inferInsert) {
   return await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const result = await tx.insert(lifeAreas).values(area);
+    return await db.transaction(async (tx: any) => {
+      const result = await tx.insert(lifeAreas).values(area).returning();
 
       await tx.insert(activityLog).values({
         userId: area.userId,
         entityType: 'lifeArea',
-        entityId: 0,
+        entityId: result[0].id,
         action: 'created',
         oldValue: undefined,
         newValue: area.name,
       });
 
-      return result;
+      return result[0];
     });
   });
 }
@@ -854,28 +857,28 @@ export async function createLifeArea(area: typeof lifeAreas.$inferInsert) {
 export async function getLifeAreas(userId: number) {
   return await withDb(db =>
     db.select().from(lifeAreas).where(eq(lifeAreas.userId, userId))
-  );
+  ) as LifeArea[];
 }
 
 export async function getLifeAreaById(id: number, userId: number) {
   const result = await withDb(db =>
     db.select().from(lifeAreas).where(and(eq(lifeAreas.id, id), eq(lifeAreas.userId, userId)))
-  );
+  ) as LifeArea[];
   return result[0];
 }
 
 export async function updateLifeArea(id: number, userId: number, data: Partial<typeof lifeAreas.$inferInsert>) {
   return await withDb(db =>
-    db.update(lifeAreas).set(data).where(and(eq(lifeAreas.id, id), eq(lifeAreas.userId, userId)))
-  );
+    db.update(lifeAreas).set(data).where(and(eq(lifeAreas.id, id), eq(lifeAreas.userId, userId))).returning()
+  ).then(r => (r as any[])[0]);
 }
 
 export async function deleteLifeArea(id: number, userId: number) {
   const oldArea = await getLifeAreaById(id, userId);
 
   return await withDb(async (db) => {
-    return await db.transaction(async (tx) => {
-      const result = await tx.delete(lifeAreas).where(and(eq(lifeAreas.id, id), eq(lifeAreas.userId, userId)));
+    return await db.transaction(async (tx: any) => {
+      const result = await tx.delete(lifeAreas).where(and(eq(lifeAreas.id, id), eq(lifeAreas.userId, userId))).returning();
 
       if (oldArea) {
         await tx.insert(activityLog).values({
@@ -884,7 +887,7 @@ export async function deleteLifeArea(id: number, userId: number) {
         });
       }
 
-      return result;
+      return result[0];
     });
   });
 }
@@ -893,8 +896,8 @@ export async function deleteLifeArea(id: number, userId: number) {
 
 export async function createTag(tag: typeof tags.$inferInsert) {
   return await withDb(db =>
-    db.insert(tags).values(tag)
-  );
+    db.insert(tags).values(tag).returning()
+  ).then(r => (r as any[])[0]);
 }
 
 export async function getTags(userId: number) {
@@ -905,30 +908,30 @@ export async function getTags(userId: number) {
 
 export async function updateTag(id: number, userId: number, data: Partial<typeof tags.$inferInsert>) {
   return await withDb(db =>
-    db.update(tags).set(data).where(and(eq(tags.id, id), eq(tags.userId, userId)))
-  );
+    db.update(tags).set(data).where(and(eq(tags.id, id), eq(tags.userId, userId))).returning()
+  ).then(r => (r as any[])[0]);
 }
 
 export async function deleteTag(id: number, userId: number) {
   return await withDb(db =>
-    db.delete(tags).where(and(eq(tags.id, id), eq(tags.userId, userId)))
-  );
+    db.delete(tags).where(and(eq(tags.id, id), eq(tags.userId, userId))).returning()
+  ).then(r => (r as any[])[0]);
 }
 
 // ============ Entity Tag Operations ============
 
 export async function addEntityTag(data: typeof entityTags.$inferInsert) {
   return await withDb(db =>
-    db.insert(entityTags).values(data)
-  );
+    db.insert(entityTags).values(data).returning()
+  ).then(r => (r as any[])[0]);
 }
 
 export async function removeEntityTag(tagId: number, entityType: string, entityId: number) {
   return await withDb(db =>
     db.delete(entityTags).where(
       and(eq(entityTags.tagId, tagId), eq(entityTags.entityType, entityType), eq(entityTags.entityId, entityId))
-    )
-  );
+    ).returning()
+  ).then(r => (r as any[])[0]);
 }
 
 export async function getEntityTags(entityType: string, entityId: number) {
@@ -943,45 +946,51 @@ export async function getEntityTags(entityType: string, entityId: number) {
 
 export async function createSubtask(subtask: typeof subtasks.$inferInsert) {
   return await withDb(db =>
-    db.insert(subtasks).values(subtask)
-  );
+    db.insert(subtasks).values(subtask).returning()
+  ).then(r => (r as any[])[0]);
 }
 
 export async function getSubtasks(taskId: number) {
   return await withDb(db =>
     db.select().from(subtasks).where(eq(subtasks.taskId, taskId))
-  );
+  ) as Subtask[];
 }
 
 export async function updateSubtask(id: number, data: Partial<typeof subtasks.$inferInsert>) {
   return await withDb(async (db) => {
-    const oldSubtask = await db.select().from(subtasks).where(eq(subtasks.id, id));
-    const result = await db.update(subtasks).set(data).where(eq(subtasks.id, id));
-
-    if (data.isCompleted && oldSubtask.length > 0) {
-      const parentTaskId = oldSubtask[0].taskId;
-      const allSubtasks = await db.select().from(subtasks).where(eq(subtasks.taskId, parentTaskId));
+    const oldSubtask = await db.select().from(subtasks).where(eq(subtasks.id, id)) as Subtask[];
+    const result = await db.update(subtasks).set(data).where(eq(subtasks.id, id)).returning() as any[];
+    
+    if (data.isCompleted && oldSubtask[0] && !oldSubtask[0].isCompleted) {
+      const taskId = oldSubtask[0].taskId;
+      const allSubtasks = await getSubtasks(taskId);
       if (allSubtasks.length > 0 && allSubtasks.every(s => s.isCompleted)) {
-        await db.update(tasks).set({ status: 'completed', progress: 100 }).where(eq(tasks.id, parentTaskId));
+        // Optional: auto-complete parent task? 
+        // For now just keep it as is.
       }
     }
-
-    return result;
+    return result[0];
   });
 }
 
 export async function deleteSubtask(id: number) {
   return await withDb(db =>
-    db.delete(subtasks).where(eq(subtasks.id, id))
-  );
+    db.delete(subtasks).where(eq(subtasks.id, id)).returning()
+  ).then(r => (r as any[])[0]);
 }
 
 // ============ Task Dependency Operations ============
 
 export async function createTaskDependency(data: typeof taskDependencies.$inferInsert) {
   return await withDb(db =>
-    db.insert(taskDependencies).values(data)
-  );
+    db.insert(taskDependencies).values(data).returning()
+  ).then(r => (r as any[])[0]);
+}
+
+export async function deleteTaskDependency(id: number) {
+  return await withDb(db =>
+    db.delete(taskDependencies).where(eq(taskDependencies.id, id)).returning()
+  ).then(r => (r as any[])[0]);
 }
 
 export async function getTaskDependencies(taskId: number) {
@@ -993,11 +1002,5 @@ export async function getTaskDependencies(taskId: number) {
 export async function getTaskDependsOn(taskId: number) {
   return await withDb(db =>
     db.select().from(taskDependencies).where(eq(taskDependencies.dependsOnId, taskId))
-  );
-}
-
-export async function deleteTaskDependency(id: number) {
-  return await withDb(db =>
-    db.delete(taskDependencies).where(eq(taskDependencies.id, id))
   );
 }

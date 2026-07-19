@@ -14,7 +14,6 @@ export default function Review() {
   const { data: review, isLoading } = trpc.dashboard.review.useQuery();
   const { data: healthStatus } = trpc.dashboard.healthStatus.useQuery();
   const { data: stats } = trpc.dashboard.stats.useQuery();
-  const { data: activityLog } = trpc.activityLog.list.useQuery();
   const { data: goals } = trpc.goals.list.useQuery();
   const { data: allTasks } = trpc.tasks.list.useQuery();
 
@@ -26,17 +25,15 @@ export default function Review() {
     );
   }
 
-  const todayCompleted = review?.completedToday || [];
-  const todayPending = review?.uncompletedToday || [];
-  const recentActivity = activityLog?.slice(0, 20) || [];
+  const todayCompleted = review?.completedTasks || [];
+  const todayPending = review?.pendingTasks || [];
   const activeGoals = goals?.filter(g => g.status === 'active') || [];
 
-  const todayTotal = (review?.totalCompleted || 0) + (review?.totalPending || 0);
-  const todayProgress = todayTotal > 0 ? Math.round(((review?.totalCompleted || 0) / todayTotal) * 100) : 0;
+  const todayTotal = (todayCompleted.length || 0) + (todayPending.length || 0);
+  const todayProgress = todayTotal > 0 ? Math.round(((todayCompleted.length || 0) / todayTotal) * 100) : 0;
 
   const overallScore = healthStatus?.overallScore || 0;
   const scoreColor = overallScore >= 70 ? 'text-green-500' : overallScore >= 40 ? 'text-yellow-500' : 'text-red-500';
-  const scoreBg = overallScore >= 70 ? 'bg-green-500' : overallScore >= 40 ? 'bg-yellow-500' : 'bg-red-500';
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
@@ -57,15 +54,15 @@ export default function Review() {
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <div className="p-4 rounded-lg bg-green-50 dark:bg-green-950/20 text-center">
-              <p className="text-3xl font-bold text-green-600">{review?.totalCompleted || 0}</p>
+              <p className="text-3xl font-bold text-green-600">{todayCompleted.length || 0}</p>
               <p className="text-xs text-muted-foreground mt-1">مهام مكتملة</p>
             </div>
             <div className="p-4 rounded-lg bg-orange-50 dark:bg-orange-950/20 text-center">
-              <p className="text-3xl font-bold text-orange-600">{review?.totalPending || 0}</p>
+              <p className="text-3xl font-bold text-orange-600">{todayPending.length || 0}</p>
               <p className="text-xs text-muted-foreground mt-1">مهام متبقية</p>
             </div>
             <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/20 text-center">
-              <p className="text-3xl font-bold text-blue-600">{review?.habitsDoneToday || 0}/{review?.habitsTotal || 0}</p>
+              <p className="text-3xl font-bold text-blue-600">{review?.habitsDone || 0}/{review?.totalHabits || 0}</p>
               <p className="text-xs text-muted-foreground mt-1">عادات اليوم</p>
             </div>
             <div className="p-4 rounded-lg bg-purple-50 dark:bg-purple-950/20 text-center">
@@ -74,13 +71,13 @@ export default function Review() {
             </div>
           </div>
 
-          <ProgressDisplay value={todayTotal > 0 ? Math.round((review?.totalCompleted || 0) / todayTotal * 100) : 0} label="تقدم اليوم" className="mb-4" />
+          <ProgressDisplay value={todayProgress} label="تقدم اليوم" className="mb-4" />
 
           {todayCompleted.length > 0 && (
             <div className="mb-4">
               <h4 className="text-sm font-medium mb-2">تم إنجازه</h4>
               <div className="space-y-1">
-                {todayCompleted.map(task => (
+                {todayCompleted.map((task: any) => (
                   <div key={task.id} className="flex items-center gap-2 text-sm p-2 rounded-lg bg-green-50/50 dark:bg-green-950/10">
                     <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
                     <span className="line-through text-muted-foreground">{task.title}</span>
@@ -94,7 +91,7 @@ export default function Review() {
             <div>
               <h4 className="text-sm font-medium mb-2">لم يتم إنجازه</h4>
               <div className="space-y-1">
-                {todayPending.map(task => (
+                {todayPending.map((task: any) => (
                   <div key={task.id} className="flex items-center gap-2 text-sm p-2 rounded-lg bg-orange-50/50 dark:bg-orange-950/10">
                     <Clock className="w-4 h-4 text-orange-500 flex-shrink-0" />
                     <span>{task.title}</span>
@@ -151,40 +148,6 @@ export default function Review() {
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-4">لا توجد أهداف نشطة</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Activity Log Feed */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Activity className="w-4 h-4" />
-                سجل النشاطات
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {recentActivity.length > 0 ? (
-                <div className="space-y-1">
-                  {recentActivity.map((log: any) => (
-                    <div key={log.id} className="flex items-center gap-2 text-xs p-2 rounded-lg hover:bg-accent/50">
-                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                        log.action === 'completed' ? 'bg-green-500' :
-                        log.action === 'created' ? 'bg-blue-500' :
-                        log.action === 'deleted' ? 'bg-red-500' :
-                        'bg-gray-400'
-                      }`} />
-                      <span className="text-muted-foreground">{log.entityType === 'habit' ? 'عادة' : log.entityType === 'task' ? 'مهمة' : log.entityType === 'goal' ? 'هدف' : log.entityType === 'project' ? 'مشروع' : log.entityType}:</span>
-                      <span>{log.action === 'completed' ? 'أنجز' : log.action === 'created' ? 'أنشئ' : log.action === 'deleted' ? 'حذف' : log.action}</span>
-                      {log.newValue && <span className="text-muted-foreground truncate max-w-[150px]">"{log.newValue}"</span>}
-                      <span className="text-muted-foreground mr-auto font-mono">
-                        {new Date(log.createdAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">لا توجد نشاطات بعد</p>
               )}
             </CardContent>
           </Card>
@@ -254,7 +217,7 @@ export default function Review() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">العادات اليوم</span>
-                  <span className="font-medium text-orange-500">{review?.habitsDoneToday || 0}/{review?.habitsTotal || 0}</span>
+                  <span className="font-medium text-orange-500">{review?.habitsDone || 0}/{review?.totalHabits || 0}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">الكتب المقروءة</span>
